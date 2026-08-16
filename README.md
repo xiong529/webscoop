@@ -86,7 +86,7 @@ GUI 任务结束写 `information/stats.json`，Scrapy 爬完写 `downloads/stats
 ### 第 1 步：获取代码
 
 ```bash
-git clone <你的仓库地址> resources-reptile
+git clone https://github.com/xiong529/resources-reptile.git resources-reptile
 cd resources-reptile
 ```
 
