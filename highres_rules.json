@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "comment": "高清图片/视频 URL 规则表。程序发现资源时按此表把缩略图 URL 变换为高清原图地址。加新网站时只需追加一条规则，无需改代码。",
+  "rules": [
+    {
+      "site": "WordPress 尺寸后缀 (freenaturestock 等)",
+      "enabled": true,
+      "kind": "image",
+      "match": "^https?://",
+      "path_pattern": "^(.+)-\\d{2,4}x\\d{2,4}\\.(jpg|jpeg|png|webp|gif|avif)$",
+      "transform": "strip_size_suffix"
+    },
+    {
+      "site": "pexels 原图直链",
+      "enabled": true,
+      "kind": "image",
+      "match": "^https?://images\\.pexels\\.com/",
+      "path_pattern": "^/photos/(\\d+)/",
+      "transform": "pexels_dl"
+    },
+    {
+      "site": "pixabay 高清变体",
+      "enabled": true,
+      "kind": "image",
+      "match": "^https?://.*pixabay\\.com/",
+      "path_pattern": "_(\\d+)\\.(jpg|jpeg|png|webp)$",
+      "transform": "pixabay_1280"
+    },
+    {
+      "site": "通用视频变体升级 (_tiny/_small/_medium/_720/_850 -> _large)",
+      "enabled": true,
+      "kind": "video",
+      "match": "^https?://",
+      "path_pattern": "_(tiny|small|medium|720|850|1280|1920)\\.",
+      "transform": "pixabay_video_large"
+    },
+    {
+      "site": "通用 w/h 尺寸参数",
+      "enabled": true,
+      "kind": "image",
+      "match": "^https?://",
+      "path_pattern": "",
+      "transform": "bump_w_h_params"
+    }
+  ]
+}

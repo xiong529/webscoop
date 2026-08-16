@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.scrapy/
+.venv/
+downloads/
+information/*
+!information/.gitkeep
+third_party/
+*.log
+*.part
+failures.json
+pexels_api_key.txt
+llm_config.json
+
+# 隐私/本机配置：登录凭证、本机代理、私人评审记录、测试垃圾输出
+cookies.txt
+proxies.txt
+EVALUATION.md
+test_out*.txt
+test_summary.txt
+*.ts

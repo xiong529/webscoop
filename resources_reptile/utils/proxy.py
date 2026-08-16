@@ -1,0 +1,182 @@
+"""代理池管理：加载、轮换、按站绑定与失败吊销（GUI 与 Scrapy 共用）。
+
+历史问题：旧实现只在 DEFAULT_PROXY 为空时才用代理池，且每次请求都重读
+文件；Scrapy 的 meta["proxy"] 与 curl_cffi Session 的 proxies 是两条独立
+路径，导致「配置了池也只用本机单代理」。
+
+本模块提供一个进程内共享的 ProxyPool：
+
+- load：从 proxies.txt / 环境变量 / Scrapy 设置一次性加载并缓存
+- next()：轮换挑选（可绑定站点，同一站点尽量用同一出口，避免抖 IP）
+- revoke()：失败吊销，进入冷却，冷却期后重新可用（避免误杀临时抖动）
+- 与 config.DEFAULT_PROXY 的关系：DEFAULT_PROXY 是「本机中转」，仍优先生效；
+  代理池在无默认代理或默认代理失败时接管（保持历史语义，但真正生效）
+"""
+
+from __future__ import annotations
+
+import os
+import random
+import re
+import threading
+import time
+from pathlib import Path
+
+_PROXY_PATTERN = re.compile(
+    r"^(?P<scheme>https?|socks[45]|http)://"
+    r"(?:(?P<user>[^:/@]+):(?P<password>[^@/]+)@)?"
+    r"(?P<host>[^:/\s]+)(?::(?P<port>\d+))?/?$"
+)
+
+
+def load_proxies(source: str = "") -> list[str]:
+    """从字符串 / 文件 / 环境变量加载代理列表（去重 + 格式校验）。"""
+    proxies: list[str] = []
+
+    if source:
+        proxies.extend(s.strip() for s in re.split(r"[\s,]+", source) if s.strip())
+
+    env = os.environ.get("RESOURCES_PROXY_URLS", "")
+    if env:
+        proxies.extend(s.strip() for s in re.split(r"[\s,]+", env) if s.strip())
+
+    # 项目根目录 proxies.txt
+    root = Path(__file__).resolve().parent.parent.parent
+    txt = root / "proxies.txt"
+    if txt.exists():
+        with open(txt, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    proxies.append(line)
+
+    # 去重并过滤非法格式
+    seen, valid = set(), []
+    for p in proxies:
+        if p in seen:
+            continue
+        seen.add(p)
+        if _PROXY_PATTERN.match(p):
+            valid.append(p)
+    return valid
+
+
+def get_random_proxy(source: str = "") -> str | None:
+    """随机返回一个代理 URL；无可用代理时返回 None（兼容旧调用）。"""
+    return pool.proxy() if source == "" else _pick_random(load_proxies(source))
+
+
+def _pick_random(proxies: list[str]) -> str | None:
+    return random.choice(proxies) if proxies else None
+
+
+class ProxyPool:
+    """进程内共享代理池：轮换挑选 + 失败吊销（带冷却）。
+
+    线程安全：GUI 多线程下载与 Scrapy 下载器可能并发取代理。
+    """
+
+    def __init__(self, cool_seconds: int = 300, max_fails: int = 2,
+                 proxies: list[str] | None = None, cache_file: str = ""):
+        self._lock = threading.Lock()
+        self._proxies: list[str] = list(proxies or [])
+        self._cache_file = cache_file  # 非空时从该文件加载（测试注入用）
+        self._cool_seconds = cool_seconds      # 吊销后冷却时长（秒）
+        self._max_fails = max_fails            # 连续失败多少次吊销
+        self._fails: dict[str, int] = {}       # proxy -> 连续失败次数
+        self._revoked_until: dict[str, float] = {}  # proxy -> 解除吊销时间
+        self._last_used: dict[str, float] = {}  # proxy -> 最近使用时间
+        self._site_map: dict[str, str] = {}     # host -> 当前绑定的代理
+        self._loaded_at = time.time() if proxies else 0.0
+
+    def _reload_locked(self) -> None:
+        # 每 60s 才重读一次文件，避免高频 reload（文件是静态配置）
+        if self._proxies and time.time() - self._loaded_at < 60:
+            return
+        if self._cache_file:
+            loaded = self._load_from_file(self._cache_file)
+        else:
+            loaded = load_proxies()
+        if loaded:
+            self._proxies = loaded
+            self._loaded_at = time.time()
+
+    @staticmethod
+    def _load_from_file(path: str) -> list[str]:
+        from pathlib import Path
+        p = Path(path)
+        if not p.exists():
+            return []
+        out = []
+        with open(p, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    out.append(line)
+        return out
+
+    def _candidates_locked(self) -> list[str]:
+        """可用代理（未吊销或在冷却期外），优先选未用过的。"""
+        now = time.time()
+        self._reload_locked()
+        usable = [
+            p for p in self._proxies
+            if self._revoked_until.get(p, 0) < now
+        ]
+        if not usable:
+            return []
+        # 尽量轮换：最近最少使用的优先
+        return sorted(usable, key=lambda p: self._last_used.get(p, 0.0))
+
+    def proxy(self, host: str = "") -> str | None:
+        """取一个代理。host 非空时优先返回该站点已绑定的代理（保持出口稳定）。"""
+        with self._lock:
+            host = (host or "").lower().removeprefix("www.")
+            if host and host in self._site_map:
+                bound = self._site_map[host]
+                if self._revoked_until.get(bound, 0) < time.time():
+                    self._last_used[bound] = time.time()
+                    return bound
+                self._site_map.pop(host, None)  # 绑定代理被吊销，解除绑定
+            cands = self._candidates_locked()
+            if not cands:
+                return None
+            # 选最近最少使用的（轮换），避免并发取到同一个
+            pick = cands[0]
+            # 绑定站点：同一个站尽量同一个出口（防抖 IP 触发风控）
+            if host:
+                self._site_map[host] = pick
+            self._last_used[pick] = time.time()
+            return pick
+
+    def revoke(self, proxy: str, reason: str = "") -> None:
+        """吊销一个代理：连续失败达阈值才进入冷却，冷却后可复用。"""
+        if not proxy:
+            return
+        with self._lock:
+            fails = self._fails.get(proxy, 0) + 1
+            self._fails[proxy] = fails
+            if fails >= self._max_fails:
+                self._revoked_until[proxy] = time.time() + self._cool_seconds
+                self._fails[proxy] = 0
+
+    def success(self, proxy: str) -> None:
+        """成功一次：清零失败计数（消除误伤）。"""
+        if not proxy:
+            return
+        with self._lock:
+            self._fails.pop(proxy, None)
+
+    @property
+    def size(self) -> int:
+        with self._lock:
+            return len(self._proxies)
+
+
+# 进程内共享单例
+pool = ProxyPool()
+
+
+# 兼容旧接口：utils/proxy.py 曾导出这些函数
+def current_pool() -> ProxyPool:
+    return pool

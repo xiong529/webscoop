@@ -1,0 +1,11 @@
+scrapy>=2.12
+requests>=2.31
+beautifulsoup4>=4.12
+Pillow>=10.0
+# Scrapling and curl_cffi: browser TLS/JA3 impersonation, HTTP/2, local proxy
+scrapling>=0.4.10
+curl_cffi>=0.16.0
+# VLC all-format player (online preview)
+python-vlc>=3.0.18
+# Fallback downloader covering 1400+ sites (GUI "backup download" button)
+gallery-dl>=1.25
