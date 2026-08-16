@@ -130,6 +130,33 @@ python gui.py                            # 启动图形界面
 | `RESOURCES_LLM_BASE/KEY/MODEL` | DeepSeek 默认 | LLM 规则生成器配置 |
 | `RESOURCES_API_KEY` | 空 | Pexels API Key（或存 `pexels_api_key.txt`） |
 
+### 安装失败排查（Troubleshooting）
+
+`start.bat` 内置了防御机制，多数环境问题会自动修复；仍失败时按下面排查：
+
+- **自动镜像回退**：依赖安装按「官方 PyPI → 清华源 → 阿里云源」依次尝试，成功使用的
+  镜像会记住在 `.venv\pip_mirror.txt`，下次启动优先使用；
+- **详细日志**：每次安装的完整输出保存在根目录 `install.log`（已 gitignore），
+  失败时脚本会打印日志最后 15 行，排查/反馈问题请附上该日志。
+
+| 现象 | 原因与解决 |
+|---|---|
+| `Python was not found` / 打开微软商店 | 未加入 PATH：安装时勾选 **Add python.exe to PATH**；或在「应用执行别名」里关闭 `python.exe` 别名；脚本也会自动寻找 `py -3` 启动器 |
+| 版本过旧（需 3.10+） | `python --version` 确认；多版本共存时用 `py -3.12 start.bat` 指定 |
+| 依赖安装失败（三个源都试过） | 公司代理/防火墙：设置 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量后重跑；删除 `.venv` 后重跑；或手动执行 `.venv\Scripts\python.exe -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt` |
+| 虚拟环境创建失败 | 杀毒软件拦截（放行本目录）、Python 安装不完整（Repair 重装）、手动 `python -m venv .venv` |
+| `VLC 播放器就绪` 乱码/警告 | 仅影响在线预览功能，不影响下载；可忽略或安装 VLC 后重跑 |
+
+### 手动完整安装（跳过一键脚本时的等价流程）
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+python -m playwright install chromium
+python gui.py
+```
+
 ## 4. 使用方法
 
 ### 图形界面（推荐）

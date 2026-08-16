@@ -23,3 +23,4 @@ EVALUATION.md
 test_out*.txt
 test_summary.txt
 *.ts
+install.log
