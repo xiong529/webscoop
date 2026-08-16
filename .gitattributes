@@ -1,0 +1,9 @@
+# 保证 Windows 脚本以 CRLF 交付（cmd 原生行尾）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 代码/文档按仓库 LF 存储
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
