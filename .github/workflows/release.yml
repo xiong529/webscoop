@@ -1,0 +1,30 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build zip
+        run: |
+          mkdir -p dist
+          git archive --format=zip --prefix=webscoop/ -o "dist/webscoop-${{ github.ref_name }}.zip" HEAD
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/webscoop-${{ github.ref_name }}.zip" \
+            --title "webscoop $GITHUB_REF_NAME" \
+            --generate-notes
