@@ -80,19 +80,30 @@ GUI 任务结束写 `information/stats.json`，Scrapy 爬完写 `downloads/stats
 
 要求：**Python 3.10+**（Windows 推荐；macOS/Linux 亦可）。
 
-### 方式 A：一键启动（Windows，推荐）
+安装只有一条路：**先把代码放到本地，再启动**。一键脚本 `start.bat` 位于仓库内，
+没有本地副本就无法使用，所以两步顺序不能颠倒：
 
-双击 **`start.bat`** —— 自动创建虚拟环境、安装依赖并启动 GUI。
-
-### 方式 B：手动安装
+### 第 1 步：获取代码
 
 ```bash
-git clone https://github.com/<your-name>/resources-reptile.git
+git clone <你的仓库地址> resources-reptile
 cd resources-reptile
+```
+
+也可以直接下载 GitHub 页面上的 ZIP 压缩包并解压到本地。
+
+### 第 2 步：启动
+
+**Windows：双击 `start.bat`** —— 自动创建虚拟环境、安装依赖并启动图形界面（推荐）。
+
+**手动方式（任何系统通用）：**
+
+```bash
 python -m venv .venv
 .venv\Scripts\activate            # Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
 python -m playwright install chromium   # 渲染模式需要（JS 站/接口捕获）
+python gui.py                            # 启动图形界面
 ```
 
 - 可选：安装 [VLC](https://www.videolan.org/)（在线播放功能）；
@@ -238,6 +249,10 @@ resources-reptile/
 ├── information/            # GUI 下载目录
 └── downloads/              # Scrapy 下载目录
 ```
+
+## 许可证
+
+本项目采用 [MIT License](LICENSE) 开源，可自由使用、修改与分发，详见 LICENSE 文件。
 
 ## 合规声明
 
