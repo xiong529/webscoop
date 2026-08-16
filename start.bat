@@ -6,7 +6,7 @@ cd /d "%~dp0"
 set "LOG=install.log"
 set "PIP_OK="
 
-> "%LOG%" echo === resources-reptile install log ===
+> "%LOG%" echo === webscoop install log ===
 >> "%LOG%" echo [start] %DATE% %TIME%
 
 rem ============ 1/4 find Python 3.10+ (python or py launcher) ============

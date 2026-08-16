@@ -1,9 +1,11 @@
-# 网站资源爬取工具 (resources-reptile)
+# 网站资源爬取工具 (webscoop)
 
 基于 Python + Scrapy 的网站资源批量爬取与下载工具：把网页里的 **图片、视频、音频、文档、
 软件安装包** 等资源一键抓到本地。提供图形化界面（tkinter）与 Scrapy 命令行两种使用方式，
 内置完整反爬应对（浏览器 TLS 指纹模拟、代理池、Playwright 渲染、登录态 Cookie 注入、
 接口 JSON 捕获），并对抖音 / 快手 / 小红书等「页面空壳 + 签名接口」平台做了专项适配。
+
+![webscoop 界面截图](screenshot.png)
 
 ## 1. 项目解决什么问题
 
@@ -86,8 +88,8 @@ GUI 任务结束写 `information/stats.json`，Scrapy 爬完写 `downloads/stats
 ### 第 1 步：获取代码
 
 ```bash
-git clone https://github.com/xiong529/resources-reptile.git resources-reptile
-cd resources-reptile
+git clone https://github.com/xiong529/webscoop.git webscoop
+cd webscoop
 ```
 
 也可以直接下载 GitHub 页面上的 ZIP 压缩包并解压到本地。
@@ -255,7 +257,7 @@ python tests/run_all.py e2e      # 仅端到端（本地 HTTP 服务，不依赖
 ### 项目结构
 
 ```
-resources-reptile/
+webscoop/
 ├── start.bat               # Windows 一键启动
 ├── config.py               # 统一配置（目录/代理/并发/超时/指纹/API）
 ├── gui.py                  # 图形界面（tkinter）
