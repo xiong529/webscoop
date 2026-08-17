@@ -144,7 +144,7 @@ class RandomProxyMiddleware:
         # 403/连接回退链自行处理，不在这里吊销）
         cur = request.meta["proxy"]
         if cur != config.DEFAULT_PROXY:
-            self.pool.revoke(cur, "conn-fail")
+            self.pool.revoke(cur, "conn-fail", force=True)
         other = config.DEFAULT_PROXY or self.pool.proxy(
             (request.url.split("/")[2] if "//" in request.url else "").lower())
         if not other:

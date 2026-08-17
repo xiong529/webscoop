@@ -202,7 +202,7 @@ class FetchSession:
                 raise
             # 2) 连接级失败：若当前用的是代理池 → 吊销并换一个池代理重试
             if pool_managed:
-                _proxy_pool.revoke(proxy, "conn-fail")
+                _proxy_pool.revoke(proxy, "conn-fail", force=True)
                 alt = _proxy_pool.proxy(host)
                 if alt and alt != proxy:
                     s = self._new_cffi_session(self._impersonate, alt)

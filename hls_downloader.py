@@ -162,6 +162,7 @@ def download_hls(url: str, dest_dir: str, out_name: str = "stream",
     - 成功后按播放列表顺序拼接 -> dest_dir/out_name.ts
     """
     dest: str | None = None
+    work_dir: str | None = None
     try:
         os.makedirs(dest_dir, exist_ok=True)
         master = _fetch(url, referer=referer)
@@ -220,4 +221,6 @@ def download_hls(url: str, dest_dir: str, out_name: str = "stream",
                 os.remove(dest)
             except OSError:
                 pass
+        if work_dir:
+            shutil.rmtree(work_dir, ignore_errors=True)
         return None

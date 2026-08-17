@@ -77,6 +77,16 @@ def _test_proxy_pool():
     p2._fails["9.9.9.9:80"] = 1
     p2.success("9.9.9.9:80")
     check("pool: success clears fail count", "9.9.9.9:80" not in p2._fails)
+    # force：连接级强信号一次即进入冷却，且失败计数归零
+    pf = ProxyPool(proxies=["7.7.7.7:80"])
+    pf.revoke("7.7.7.7:80", "conn-fail", force=True)
+    check("pool: force revoke immediate",
+          pf._revoked_until.get("7.7.7.7:80", 0) > 0 and pf._fails.get("7.7.7.7:80") == 0)
+    # 普通 revoke 仍走计数（force=False 默认）
+    pn = ProxyPool(proxies=["8.8.8.8:80"])
+    pn.revoke("8.8.8.8:80", "403")
+    check("pool: plain revoke still counts", pn._fails.get("8.8.8.8:80") == 1
+          and pn._revoked_until.get("8.8.8.8:80", 0) == 0)
     # 空池（用空的缓存文件阻断项目 proxies.txt 的自动加载）
     with tempfile.TemporaryDirectory() as td:
         ef = os.path.join(td, "empty.txt")

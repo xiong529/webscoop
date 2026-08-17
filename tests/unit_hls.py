@@ -158,6 +158,8 @@ def _test_failures(base, dest):
     check("hls: no segments returns None", got is None)
     got = hls_downloader.download_hls(base + "/master.m3u8", dest_dir=dest, out_name="t5")
     check("hls: 404 segment returns None", got is None)
+    leftovers = [p for p in os.listdir(dest) if p.startswith(".hls_tmp_")]
+    check("hls: failure leaves no temp dir", len(leftovers) == 0, True)
     for p in ("t1.ts", "t2.ts", "t3.ts", "t4.ts", "t5.ts"):
         if os.path.exists(os.path.join(dest, p)):
             os.remove(os.path.join(dest, p))

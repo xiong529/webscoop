@@ -149,14 +149,17 @@ class ProxyPool:
             self._last_used[pick] = time.time()
             return pick
 
-    def revoke(self, proxy: str, reason: str = "") -> None:
-        """吊销一个代理：连续失败达阈值才进入冷却，冷却后可复用。"""
+    def revoke(self, proxy: str, reason: str = "", force: bool = False) -> None:
+        """吊销一个代理：连续失败达阈值才进入冷却，冷却后可复用。
+
+        force=True 用于连接级失败等强信号，一次即进入冷却。
+        """
         if not proxy:
             return
         with self._lock:
             fails = self._fails.get(proxy, 0) + 1
             self._fails[proxy] = fails
-            if fails >= self._max_fails:
+            if force or fails >= self._max_fails:
                 self._revoked_until[proxy] = time.time() + self._cool_seconds
                 self._fails[proxy] = 0
 
