@@ -152,6 +152,9 @@ class VLCEmbeddedPlayer:
             # 画面表现就是"只播开头一两秒然后循环"。
             "--network-caching=15000",
             "--file-caching=5000",
+            # 禁用硬件解码：Intel 核显 D3D11VA 解码部分 H.264 流会
+            # get_buffer() failed 崩溃，VLC 崩溃重启即"循环开头"。软解更稳。
+            "--avcodec-hw=none",
         ]
         if audio_only:
             # 纯音频模式：禁用视频输出，避免黑屏占位与视频输出初始化问题

@@ -1920,7 +1920,7 @@ class ResourceApp:
             return
         try:
             import tempfile
-            raw_uri = res.raw_url or res.url
+            raw_uri = res.url or res.raw_url
             audio = raw_uri.split("?", 1)[0].rsplit(".", 1)[-1].lower() in _AUDIO_EXTS
             win = tk.Toplevel(self.root)
             win.title(f"播放 - {res.name}")
@@ -1958,7 +1958,7 @@ class ResourceApp:
                     f"play_{os.getpid()}_{int(time.time() * 1000)}.cached")
                 try:
                     got = 0
-                    media = res.raw_url or res.url
+                    media = res.url or res.raw_url
                     with open(tmp, "wb") as f:
                         for chunk, _tl in fs.iter_content(
                                 media, headers={"Referer": res.page_url},
@@ -1977,8 +1977,12 @@ class ResourceApp:
                 return tmp
 
             def prepare() -> str:
-                """返回播放目标：缓存好的本地文件，或原始在线 URL。"""
-                media = res.raw_url or res.url
+                """返回播放目标：缓存好的本地文件，或原始在线 URL。
+
+                播放优先用签名直链（url），raw_url（如抖音 aweme/v1/play/
+                官方端点）给下载用：VLC 裸请求无 Cookie 经常会挂起，只出开头。
+                """
+                media = res.url or res.raw_url
                 if res.kind != "video":
                     return media
                 try:
