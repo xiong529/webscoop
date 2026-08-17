@@ -43,6 +43,10 @@ GUI 下全程鼠标操作，不用写代码。
 - **文件名模板**：`{category} {kind} {name} {stem} {ext} {site} {title} {size} {width}x{height}`
   自由组合目录与命名（如 `{site}/{title}/{stem}_{width}x{height}{ext}`），路径自动净化防穿越；
 - **断点续载**：已存在文件自动跳过；下载失败自动重试（3 次指数退避），失败原因分桶记录；
+- **全局下载存档**（yt-dlp download-archive 语义）：成功下载的 URL+时间持久化到
+  `download_archive.json`，重新爬同一批资源直接跳过——即使文件已被清理/移动，定时跟
+  进博主主页时只下新增作品；**404 死链表**：`dead_urls.json` 记录 404/410/451 永久
+  失效 URL，下次直接跳跃不再重试；
 - **HLS（m3u8）分片下载**：自动选择最高带宽变体，8 线程并发合并为 `.ts` 文件（免 ffmpeg），
   支持 BYTERANGE 偏移分片与 **AES-128 加密流解密**；SAMPLE-AES/直播流报可读原因后跳过；
 - **高清原图规则表**：`highres_rules.json` 驱动「缩略图 → 高清原图」变换，新增站点只需追加
@@ -70,6 +74,8 @@ GUI 下全程鼠标操作，不用写代码。
   重试的现有链路。
 
 ### 扩展能力
+- **热点模式**：「热点模式…」按钮抓 B 站热榜 Top N（`hot_search.py`，接口无需签名），
+  勾选后批量「渲染 + 接口捕获」发现各视频页直链（B 站视频播放流由适配器从捕获接口提取）；
 - **Pexels API 抓取**：独立弹窗填入接口地址 + API Key，从官方 API 抓图/视频（预设搜索、
   精选、热门视频接口，自动翻页跟随 `next_page`，Key 本地保存并 gitignore）；
 - **gallery-dl 备用下载**：内置发现器认不出的站点一键交给 gallery-dl（内置 1400+ 站点
@@ -274,11 +280,14 @@ webscoop/
 ├── player_vlc.py           # VLC 在线播放器
 ├── hls_downloader.py       # m3u8 分片下载合并
 ├── llm_rules.py            # LLM 高清规则生成器
+├── hot_search.py           # 热搜榜抓取（B站热榜，热点模式）
+├── download_archive.py     # 全局下载存档（yt-dlp download-archive 语义）
+├── dead_list.py            # 404 死链持久化列表
 ├── platform_adapters/       # 平台适配器目录（一平台一模块，自动注册）
 ├── format_selector.py       # 统一格式选择器（best[height<=1080] 语法）
 ├── highres_rules.json      # 缩略图 → 高清原图规则表
 ├── resources_reptile/      # Scrapy 工程（爬虫/中间件/管道/去重/下载处理器）
-├── tests/                  # 14 套回归测试
+├── tests/                  # 16 套回归测试
 ├── information/            # GUI 下载目录
 └── downloads/              # Scrapy 下载目录
 ```
