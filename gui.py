@@ -967,6 +967,19 @@ class ResourceApp:
             self.queue.put(("error", text))
 
         from urllib.parse import urlparse
+        # 平台适配器（抖音/快手/小红书/B站等）命中的页面：内置「渲染+捕获签名
+        # 接口」路径已专门处理，gallery-dl 不支持这些站，只会报
+        # [gallery-dl][error]Unsupported 干扰，直接跳过补充。
+        try:
+            from platform_adapters import page_adapter
+            if page_adapter(url):
+                (note("该平台由内置解析器处理，跳过 gallery-dl 补充")
+                 if merge_only else
+                 fail("该平台由内置解析器处理，gallery-dl 不支持，"
+                      "请用「发现资源」按钮重试"))
+                return
+        except Exception:
+            pass
         # gallery-dl 的 pexels 提取器不识别「搜索视频」页（会把 "videos" 当关键词
         # 返回无关图片）。这类页面结果由内置发现提供，跳过备用补充。
         try:
@@ -1192,6 +1205,17 @@ class ResourceApp:
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
             self.url_var.set(url)
+        try:
+            from platform_adapters import page_adapter
+            if page_adapter(url):
+                messagebox.showinfo(
+                    "提示",
+                    "抖音/快手/小红书/B站等平台由内置解析器处理（渲染+捕获签名接口），\n"
+                    "gallery-dl 不支持这些站。请直接点「发现资源」。",
+                )
+                return
+        except Exception:
+            pass
         outdir = self.outdir_var.get().strip() or INFORMATION_DIR
         opts = self._ask_backup_options()
         if opts is None:  # 用户取消

@@ -36,6 +36,7 @@ from discover_common import (  # noqa: F401  兼容外部 `from gui_crawler impo
     highres_url,
     is_download_endpoint,
     is_icon_url,
+    is_platform_noise_url,
     is_tiny,
     looks_like_image,
     pexels_cover_to_video,
@@ -519,7 +520,8 @@ class Discoverer:
         # 过滤常见网站图标/附属小资源（favicon、.ico 等）
         if config.FILTER_ICONS:
             before = len(resources)
-            resources = [r for r in resources if not is_icon_url(r.url)]
+            resources = [r for r in resources
+                         if not is_icon_url(r.url) and not is_platform_noise_url(r.url)]
             self.filtered_icons = before - len(resources)
 
         # 分配封面：视频尝试 poster / 同祖先 img
@@ -550,6 +552,12 @@ class Discoverer:
             detail_resources = self._follow_detail_pages(soup, first.url)
         if detail_resources:
             resources = self._merge_resources(resources, detail_resources)
+        # 详情页跟进轮合并的资源同样过滤噪音（如各推荐页里的客户端宣传视频）
+        if config.FILTER_ICONS:
+            before = len(resources)
+            resources = [r for r in resources
+                         if not is_icon_url(r.url) and not is_platform_noise_url(r.url)]
+            self.filtered_icons += before - len(resources)
         if self.on_resource is not None:
             # 详情页新资源流式补充（探测阶段已回调的直接资源不再重复）
             for r in resources:
@@ -562,7 +570,9 @@ class Discoverer:
             api_items = extract_media_from_api(self.api_records, limit=MAX_RESOURCES,
                                                url=page_url)
             for it in api_items:
-                if any(r.url.split("?")[0] == it["url"].split("?")[0] for r in resources):
+                if (any(r.url.split("?")[0] == it["url"].split("?")[0]
+                        for r in resources)
+                        or is_platform_noise_url(it["url"])):
                     continue
                 r = Resource(it["url"], page_url=page_url_lower, title=title,
                              preview_url=it.get("preview") or "",
@@ -969,7 +979,8 @@ class Downloader:
     def start(self, resources: list[Resource], progress_cb=None):
         # 下载前的最后一道防线：过滤图标/极小文件，避免落到磁盘
         resources = [r for r in resources
-                     if not is_icon_url(r.url) and not is_tiny(r)]
+                     if not is_icon_url(r.url) and not is_platform_noise_url(r.url)
+                     and not is_tiny(r)]
         self.stat.set_total(len(resources))
         done = 0
         with ThreadPoolExecutor(max_workers=self.workers) as pool:

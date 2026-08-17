@@ -330,6 +330,28 @@ def is_icon_url(url: str) -> bool:
     return any(p in last or p in path for p in config.ICON_NAME_PATTERNS)
 
 
+#: 短视频/社交平台页面里的「附属装饰」资源特征：头像、表情包、客户端
+#: 安装包/宣传视频、徽标等，与作品内容无关，命中即过滤（避免刷屏噪音）。
+PLATFORM_NOISE_PATTERNS = (
+    "/twemoji/",           # 表情包（抖音/微博等评论 emoji）
+    "/aweme-avatar/",      # 抖音头像
+    "/tos-cn-avt",         # 抖音头像 CDN 前缀
+    "douyin_pc_client",    # 抖音 PC 客户端宣传视频
+    "douyin-downloader",   # 抖音 PC 客户端安装包
+    "/douyin-pc-client/",  # 客户端资源目录
+    "/download/pc/",       # 客户端下载页
+    "emblem.png",          # 站内徽标装饰图
+    "douyinstatic.com",    # 抖音 PC 前端静态资源域（UI 按钮/图标素材）
+)
+
+
+def is_platform_noise_url(url: str) -> bool:
+    """判断 URL 是否为平台页面装饰性附属资源（头像/表情/客户端包等）。"""
+    u = url.lower()
+    path = urlparse(url).path.lower()
+    return any(p in u or p in path for p in PLATFORM_NOISE_PATTERNS)
+
+
 def is_tiny(res, min_size: int | None = None) -> bool:
     """体积过小的资源（几十 B~几百 B 的图标/占位图）。
 
