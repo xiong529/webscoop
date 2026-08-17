@@ -1884,8 +1884,11 @@ class ResourceApp:
         """用 VLC 万能播放器播放视频/音频/文件。
 
         小视频（≤ PLAYER_CACHE_MB）先走内置代理下载到临时文件再本地播放
-        （不卡顿、可拖动进度）；大视频直接流播（VLC 带代理 + 大缓冲）。
+        （不卡顿、可拖动进度）；大视频流播（VLC 大缓冲 + 携带页面 Referer）。
+        音频（mp3/flac/…）走纯音频窗口（无视频区）。
         """
+        _AUDIO_EXTS = ("mp3", "wav", "flac", "m4a", "aac", "ogg", "opus",
+                       "wma", "ape", "aiff", "mid", "midi")
         try:
             from player_vlc import VLCEmbeddedPlayer, VLCUnavailableError
         except ImportError:
@@ -1893,15 +1896,19 @@ class ResourceApp:
             return
         try:
             import tempfile
+            raw_uri = res.raw_url or res.url
+            audio = raw_uri.split("?", 1)[0].rsplit(".", 1)[-1].lower() in _AUDIO_EXTS
             win = tk.Toplevel(self.root)
             win.title(f"播放 - {res.name}")
-            win.geometry("880x560")
+            win.geometry("560x210" if audio else "880x560")
             container = ttk.Frame(win)
             container.pack(fill=tk.BOTH, expand=True)
-            vframe = ttk.Frame(container)
-            vframe.pack(fill=tk.BOTH, expand=True)
-            lbl = ttk.Label(vframe, text="正在加载视频…", anchor="center")
-            lbl.pack(fill=tk.BOTH, expand=True)
+            lbl = None
+            if not audio:
+                vframe = ttk.Frame(container)
+                vframe.pack(fill=tk.BOTH, expand=True)
+                lbl = ttk.Label(vframe, text="正在加载视频…", anchor="center")
+                lbl.pack(fill=tk.BOTH, expand=True)
 
             st = {"cache_path": None, "progress": None, "playing": False}
             # 主线程预捕获配置（worker 线程禁止碰 tkinter 变量）
@@ -1912,12 +1919,13 @@ class ResourceApp:
             def _poll_cache_progress():
                 """主线程轮询缓存进度（worker 线程禁止碰 tkinter）。"""
                 p = st["progress"]
-                if p and not st["playing"] and lbl.winfo_exists():
+                if p and not st["playing"] and lbl and lbl.winfo_exists():
                     lbl.config(text=f"正在缓存视频 {pct_size(p[0])} / {pct_size(p[1])}"
                                     f"（缓存后本地播放更流畅）…")
                 if not st["playing"] and win.winfo_exists():
                     win.after(200, _poll_cache_progress)
-            _poll_cache_progress()
+            if not audio:
+                _poll_cache_progress()
 
             def cache_to_local(total: int, fs) -> str | None:
                 """下载到临时文件；成功返回路径，失败返回 None。"""
@@ -1963,15 +1971,65 @@ class ResourceApp:
 
             def open_player():
                 try:
-                    player = VLCEmbeddedPlayer(lbl, proxy=proxy)
+                    player = VLCEmbeddedPlayer(None if audio else lbl, proxy=proxy,
+                                               audio_only=audio)
                 except VLCUnavailableError as exc:
                     win.after(0, lambda e=exc: messagebox.showerror("播放器不可用", str(e)))
                     return
                 win._player = player  # 防止被 GC
+
+                def _close():
+                    player.release()
+                    if st["cache_path"] and os.path.exists(st["cache_path"]):
+                        try:
+                            os.remove(st["cache_path"])
+                        except OSError:
+                            pass
+                    win.destroy()
+
+                win.protocol("WM_DELETE_WINDOW", _close)
+
+                if audio:
+                    meta = ttk.Label(container, text=res.name, anchor="center",
+                                     wraplength=540)
+                    meta.pack(fill=tk.X, padx=8, pady=(14, 2))
+                    ttip = ttk.Label(container, text="加载中…", anchor="center")
+                    ttip.pack(fill=tk.X, pady=2)
+                    row = ttk.Frame(container)
+                    row.pack(fill=tk.X, padx=8, pady=8)
+                    btn_play = ttk.Button(row, text="暂停/继续", command=player.toggle)
+                    btn_play.pack(side=tk.LEFT, padx=2)
+                    ttk.Button(row, text="停止", command=player.stop).pack(side=tk.LEFT, padx=2)
+                    scale = ttk.Scale(row, from_=0, to=1000,
+                                      command=lambda v: player.set_position(float(v) / 1000))
+                    scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8)
+                    vol = ttk.Scale(row, from_=0, to=100,
+                                    command=lambda v: player.volume(int(float(v))))
+                    vol.set(80)
+                    vol.pack(side=tk.RIGHT)
+
+                    def _poll_audio():
+                        try:
+                            if player._duration > 0:
+                                pos = player.position()
+                                scale.set(int(pos * 1000))
+                                ttip.config(
+                                    text=f"{int(pos * player._duration)}s / {int(player._duration)}s"
+                                         f"  -  {res.name}")
+                        except Exception:
+                            pass
+                        if win.winfo_exists():
+                            win.after(200, _poll_audio)
+
+                    st["playing"] = True
+                    win.after(0, lambda: player.play(raw_uri, referrer=res.page_url))
+                    _poll_audio()
+                    return
+
                 uri = prepare()
                 st["playing"] = True
-                win.after(0, lambda: (lbl.config(text=""), player.play(uri)))
-                win.protocol("WM_DELETE_WINDOW", lambda: (_close()))
+                win.after(0, lambda: (lbl.config(text=""),
+                                      player.play(uri, referrer=res.page_url)))
                 controls = ttk.Frame(container)
                 controls.pack(fill=tk.X, pady=4)
                 btn_play = ttk.Button(controls, text="暂停/继续", command=player.toggle)
@@ -2005,15 +2063,6 @@ class ResourceApp:
                         win.attributes("-fullscreen", False)
                     else:
                         win.attributes("-fullscreen", True)
-
-                def _close():
-                    player.release()
-                    if st["cache_path"] and os.path.exists(st["cache_path"]):
-                        try:
-                            os.remove(st["cache_path"])
-                        except OSError:
-                            pass
-                    win.destroy()
 
             threading.Thread(target=open_player, daemon=True).start()
         except Exception as exc:

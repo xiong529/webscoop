@@ -138,17 +138,24 @@ class VLCEmbeddedPlayer:
     进度/音量）。关闭宿主时调用 :meth:`stop` 释放资源。
     """
 
-    def __init__(self, host_widget, repeat: bool = False, proxy: str | None = None):
+    def __init__(self, host_widget, repeat: bool = False, proxy: str | None = None,
+                 audio_only: bool = False):
         self.host = host_widget
+        self.audio_only = audio_only
         self._vlc = import_vlc()
         args = [
             "--no-video-title-show",
             "--verbose=0", "--no-osd",
             "--input-repeat=99999" if repeat else "--input-repeat=0",
-            # 在线播放优化：加大网络缓冲（默认 1000ms 容易卡），断流自动重连
-            "--network-caching=5000",
-            "--http-reconnect",
+            # 在线播放优化：加大网络缓冲（默认 1000ms 容易卡）。
+            # 注意不能加 --http-reconnect：断流重连会从头拉流，
+            # 画面表现就是"只播开头一两秒然后循环"。
+            "--network-caching=15000",
+            "--file-caching=5000",
         ]
+        if audio_only:
+            # 纯音频模式：禁用视频输出，避免黑屏占位与视频输出初始化问题
+            args.append("--no-video")
         if proxy:
             args.append(f"--http-proxy={proxy}")
         self._instance = self._vlc.Instance(*args)
@@ -190,13 +197,22 @@ class VLCEmbeddedPlayer:
             except Exception:
                 pass
 
-    def play(self, uri: str):
-        """播放 URL 或本地路径。uri 支持 http(s):// 直链（含 rtmp/rtsp 等由 VLC 处理）。"""
+    def play(self, uri: str, referrer: str | None = None, user_agent: str | None = None):
+        """播放 URL 或本地路径。uri 支持 http(s):// 直链（含 rtmp/rtsp 等由 VLC 处理）。
+
+        在线防盗链直链可传 referrer（页面地址）与 user_agent：不带 Referer 的请求
+        经常只回开头一小段数据，是"只播开头几秒"的另一大根因。
+        """
         if isinstance(uri, os.PathLike):
             uri = os.fspath(uri)
         if os.path.isfile(uri):
             uri = os.path.abspath(uri)
         media = self._instance.media_new(uri)
+        if not os.path.isfile(uri):
+            if referrer:
+                media.add_option(f":http-referrer={referrer}")
+            if user_agent:
+                media.add_option(f":http-user-agent={user_agent}")
         self.player.set_media(media)
         self.player.play()
         self._polling = True

@@ -124,7 +124,7 @@ API_KEY_FILE = os.environ.get("RESOURCES_API_KEY_FILE",
 
 # ---------------- 在线播放 ----------------
 # 小于该大小（MB）的视频先缓存到本地再播放（更流畅、可拖动），更大的直接流播
-PLAYER_CACHE_MB = int(os.environ.get("PLAYER_CACHE_MB", "60"))
+PLAYER_CACHE_MB = int(os.environ.get("PLAYER_CACHE_MB", "300"))
 
 # ---------------- 浏览器渲染模式（Playwright） ----------------
 # 无头浏览器渲染页面后再解析：静态模式抓不到的站（JS 动态加载/接口渲染），
