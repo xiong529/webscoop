@@ -185,8 +185,8 @@ def _test_capture_session():
     check("path: relative resolves to repo root",
           cuk.cookie_file_path("cookies.txt") ==
           os.path.join(repo_root, "cookies.txt"))
-    check("path: absolute kept", cuk.cookie_file_path(r"C:\x\c.txt") ==
-          r"C:\x\c.txt")
+    abs_sample = os.path.join(tempfile.gettempdir(), "abs.txt")
+    check("path: absolute kept", cuk.cookie_file_path(abs_sample) == abs_sample)
     with tempfile.TemporaryDirectory() as _td6:
         _fake = os.path.join(_td6, "fake.txt")
         with mock.patch("resources_reptile.utils.cookies.cookie_file_path",
