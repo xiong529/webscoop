@@ -18,6 +18,7 @@ import io
 import os
 import queue
 import random
+import sys
 import threading
 import time
 import tkinter as tk
@@ -2229,6 +2230,20 @@ class ResourceApp:
         self.root.destroy()
 
 
+def _set_app_icon(root):
+    """设置窗口/任务栏图标（打包后取 exe 内嵌资源，源码运行取项目根 webscoop.ico）。"""
+    base = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
+    ico = os.path.join(base, "webscoop.ico")
+    if not os.path.exists(ico):
+        return
+    try:
+        root.iconbitmap(ico)
+        img = Image.open(ico)
+        root.iconphoto(True, ImageTk.PhotoImage(img))
+    except Exception:
+        pass
+
+
 def _pool_health_bg(probe_url: str):
     """启动后台探活代理池：死代理提前吊销，不阻塞界面（失败静默）。"""
     try:
@@ -2240,12 +2255,73 @@ def _pool_health_bg(probe_url: str):
         pass
 
 
+def _doctor(run_code: int = 1) -> int:
+    """无头自检（webscoop.exe --doctor）：验证懒加载依赖并按依赖就绪度返回退出码。
+
+    检查项：平台适配器注册表 / Playwright(含 chromium 启动) / VLC / gallery-dl /
+    Scrapling / curl_cffi 指纹会话。结果写入日志；缺失项只降级功能，不阻断 GUI。
+    """
+    from renderer import ensure_browsers_path
+    ensure_browsers_path()
+    played = 0
+    failed = 0
+    check = []
+
+    def probe(name, fn):
+        nonlocal played, failed
+        played += 1
+        try:
+            fn()
+            check.append(f"[OK]   {name}")
+        except Exception as exc:
+            failed += 1
+            check.append(f"[FAIL] {name}: {type(exc).__name__}: {str(exc)[:140]}")
+
+    import platform_adapters as pa
+    probe("适配器注册表", lambda: None)
+    log.info("适配器注册: %s", ", ".join(sorted(a.name for a in pa.PLATFORM_ADAPTERS)))
+    probe("适配器插件(抖音/快手/小红书/B站)",
+          lambda: [a.match_page("https://www.douyin.com/")
+                   for a in pa.PLATFORM_ADAPTERS])
+
+    def _curl_ok():
+        from curl_cffi.requests import Session
+        s = Session(impersonate="chrome")
+        s.close()
+        return True
+
+    probe("curl_cffi TLS 指纹会话", lambda: _curl_ok() or None)
+    probe("Scrapling 兜底",
+          lambda: __import__("scrapling.fetchers", fromlist=["Fetcher"]))
+    probe("gallery-dl 备用下载器",
+          lambda: __import__("gallery_dl.extractor", fromlist=["extractor"]))
+    probe("VLC 视频预览",
+          lambda: __import__("vlc", fromlist=["MediaPlayer"]) or None)
+
+    def _launch_chromium():
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as pw:
+            b = pw.chromium.launch(headless=True)
+            b.close()
+    probe("Playwright + chromium 安装", _launch_chromium)
+
+    for line in check:
+        log.info("doctor %s", line)
+    log.info("doctor 汇总: %d 项, 失败 %d", played, failed)
+    return run_code if failed else 0
+
+
 def main():
+    if "--doctor" in sys.argv:
+        sys.exit(_doctor(run_code=2))
+    from renderer import ensure_browsers_path
+    ensure_browsers_path()
     setup_logging()
     log.info("应用启动 工作目录=%s", os.getcwd())
     threading.Thread(target=_pool_health_bg,
                      args=(config.PROXY_HEALTH_PROBE,), daemon=True).start()
     root = tk.Tk()
+    _set_app_icon(root)
     app = ResourceApp(root)
     try:
         root.mainloop()

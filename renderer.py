@@ -26,10 +26,23 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import threading
 
 import config
+
+
+def ensure_browsers_path():
+    """PyInstaller frozen 环境下 Playwright 默认找 driver 内 .local-browsers，
+    需显式指向用户级浏览器目录（playwright install chromium 的默认安装位）。
+    源码运行无影响（setdefault 且路径非 frozen 时跳过）。"""
+    if not getattr(sys, "frozen", False):
+        return
+    if "PLAYWRIGHT_BROWSERS_PATH" not in os.environ:
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(
+            base, "ms-playwright")
 
 _LAUNCH_ARGS = (
     "--disable-blink-features=AutomationControlled",
@@ -308,6 +321,7 @@ def _run_render(url: str, timeout: int | None = None, proxy: str | None = None,
                 api_filters: tuple[str, ...] | None = None,
                 scroll_max: int = 0):
     """共享调度：起一次浏览器完成渲染与（可选）API 捕获。"""
+    ensure_browsers_path()
     try:
         import playwright  # noqa: F401
     except ImportError:

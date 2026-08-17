@@ -39,6 +39,8 @@ class CookieCaptureSession:
     # ---------------- 生命周期（在专用线程内运行） ----------------
 
     def _bg_run(self, url: str):
+        from renderer import ensure_browsers_path
+        ensure_browsers_path()
         from playwright.sync_api import sync_playwright
         try:
             pw = sync_playwright().start()
