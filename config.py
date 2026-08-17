@@ -16,8 +16,9 @@ INFORMATION_DIR = os.environ.get("RESOURCES_INFO_DIR", os.path.join(BASE_DIR, "i
 SCRAPY_DOWNLOAD_DIR = os.environ.get("RESOURCES_SCRAPY_DIR", os.path.join(BASE_DIR, "downloads"))
 
 # ---------------- 代理 ----------------
-# 本机代理地址（写死 127.0.0.1:65534，用于访问国外站点；如无需代理可设为 "" ）
-DEFAULT_PROXY = os.environ.get("RESOURCES_PROXY", "http://127.0.0.1:65534")
+# 本地代理地址（默认 http://127.0.0.1:7890，即 Clash 等客户端常见默认端口；
+# 如有差异可设环境变量 RESOURCES_PROXY 覆盖；如无需代理可设为 "" ）
+DEFAULT_PROXY = os.environ.get("RESOURCES_PROXY", "http://127.0.0.1:7890")
 # 是否默认启用代理（走本机中转）
 PROXY_ENABLED = os.environ.get("RESOURCES_PROXY_ENABLED", "1") == "1"
 # 代理池健康检测探针（启动后台并发探测，不可用的提前吊销；2xx/3xx 视为可用）
