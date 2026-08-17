@@ -1,5 +1,15 @@
 # 网站资源爬取工具 (webscoop)
 
+## ⬇️ 下载 Windows 版
+
+[点击下载 Windows 版（免安装，解压即用）](https://github.com/xiong529/webscoop/releases/latest)
+
+> 最新 Release 提供 `webscoop.exe`（单文件，双击直接运行）与 `webscoop-vX.Y.Z-win-x64.zip`（压缩包）两种格式，任选其一。
+> 首次使用视频预览需安装 [VLC](https://www.videolan.org/)；渲染模式 / 抖音热榜需先执行
+> `pip install playwright && playwright install chromium`（仅源码运行需要；EXE 内已内置 Playwright 驱动）。
+
+---
+
 基于 Python + Scrapy 的网站资源批量爬取与下载工具：把网页里的 **图片、视频、音频、文档、
 软件安装包** 等资源一键抓到本地。提供图形化界面（tkinter）与 Scrapy 命令行两种使用方式，
 内置完整反爬应对（浏览器 TLS 指纹模拟、代理池、Playwright 渲染、登录态 Cookie 注入、
