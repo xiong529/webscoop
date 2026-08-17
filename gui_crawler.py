@@ -18,7 +18,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable
 from urllib.parse import parse_qs, parse_qsl, urlencode, urljoin, urlparse, urlunsplit
 
@@ -114,17 +114,51 @@ def save_failures(outdir: str, entries: dict[str, dict]) -> None:
 
 
 class _DownloadError(Exception):
-    """下载失败信号。retryable=True 表示瞬时错误（超时/断流/5xx 等），外层按指数退避重试。"""
+    """下载失败（reason 可读；status=0 表示网络层错误；retry_after 为 429 建议等待秒）。"""
 
-    def __init__(self, reason: str, retryable: bool):
+    def __init__(self, reason: str, retryable: bool, status: int = 0,
+                 retry_after: float = 0.0):
         super().__init__(reason)
         self.reason = reason
         self.retryable = retryable
+        self.status = status
+        self.retry_after = retry_after
 
 
 def _code_retryable(status: int) -> bool:
     # 4xx 大多为永久失败（404/403/410…），重试无意义；429/5xx 属瞬时
     return status == 0 or status == 429 or status >= 500
+
+
+def _exc_status(exc: Exception) -> int:
+    """从异常对象提取 HTTP 状态码（0 = 无法确定，视为网络层错误）。"""
+    for src in (exc, getattr(exc, "response", None)):
+        if src is None:
+            continue
+        st = getattr(src, "status_code", 0) or 0
+        if st:
+            return int(st)
+    m = re.search(r"HTTP\s+(\d{3})", str(exc))
+    return int(m.group(1)) if m else 0
+
+
+def _retry_after_seconds(exc: Exception) -> float:
+    """解析响应头 Retry-After（秒数或 HTTP 日期），无法解析返回 0。"""
+    resp = getattr(exc, "response", None)
+    hdr = ""
+    if resp is not None:
+        hdrs = getattr(resp, "headers", None) or {}
+        hdr = str(hdrs.get("Retry-After", "") or "").strip()
+    if hdr.isdigit():
+        return float(hdr)
+    if hdr:
+        try:
+            from email.utils import parsedate_to_datetime
+            return max(0.0, (parsedate_to_datetime(hdr) -
+                             datetime.now(timezone.utc)).total_seconds())
+        except Exception:
+            return 0.0
+    return 0.0
 
 
 def browser_headers(referer: str | None = None) -> dict:
@@ -1020,7 +1054,11 @@ class Downloader:
         backoff = float(config.DOWNLOAD_RETRY_BACKOFF)
         last_reason: str | None = None
         retried = 0
-        # 1 次正常尝试 + DOWNLOAD_RETRY_TIMES 次指数退避重试（3s/6s/12s…）
+        # 1 次正常尝试 + DOWNLOAD_RETRY_TIMES 次分桶退避重试：
+        # - 429：按 Retry-After（未给出则双倍指数），上限 60s
+        # - 网络层错误（status=0）：快速重试（0.5s/1s/2s…，上限 8s）
+        # - 5xx 等：原指数退避（3s/6s/12s…）
+        # - 404/410 等非瞬时：不重试
         for attempt in range(retries + 1):
             try:
                 self._download_attempt(r, dl_url, headers, tmp, dest)
@@ -1033,7 +1071,14 @@ class Downloader:
                 if not exc.retryable or attempt >= retries:
                     break
                 retried = attempt + 1
-                time.sleep(backoff * (2 ** attempt))
+                if exc.status == 429:
+                    wait = exc.retry_after or (backoff * (2 ** attempt) * 2)
+                    wait = min(max(wait, 1.0), 60.0)
+                elif exc.status == 0:
+                    wait = min(0.5 * (2 ** attempt), 8.0)
+                else:
+                    wait = backoff * (2 ** attempt)
+                time.sleep(wait)
         try:
             if os.path.exists(tmp):
                 os.remove(tmp)
@@ -1190,5 +1235,9 @@ class Downloader:
         except _DownloadError:
             raise
         except Exception as exc:
+            status = _exc_status(exc)
             raise _DownloadError(
-                f"异常: {type(exc).__name__}: {str(exc)[:80]}", True) from exc
+                f"异常: {type(exc).__name__}: {str(exc)[:80]}",
+                _code_retryable(status) if status else True,
+                status=status,
+                retry_after=_retry_after_seconds(exc)) from exc

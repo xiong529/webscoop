@@ -21,6 +21,9 @@ SCRAPY_DOWNLOAD_DIR = os.environ.get("RESOURCES_SCRAPY_DIR", os.path.join(BASE_D
 DEFAULT_PROXY = os.environ.get("RESOURCES_PROXY", "http://127.0.0.1:65534")
 # 是否默认启用代理（走本机中转）
 PROXY_ENABLED = os.environ.get("RESOURCES_PROXY_ENABLED", "1") == "1"
+# 代理池健康检测探针（启动后台并发探测，不可用的提前吊销；2xx/3xx 视为可用）
+PROXY_HEALTH_PROBE = os.environ.get(
+    "PROXY_HEALTH_PROBE", "http://www.gstatic.com/generate_204")
 
 # ---------------- 反爬与请求 ----------------
 # TLS 指纹模拟使用的浏览器（经 Scrapling/curl_cffi 支持）

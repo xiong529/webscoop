@@ -297,7 +297,7 @@ class FetchSession:
         resp, using = self._request_with_fallback("get", url, headers, timeout, stream=True,
                                                   proxy_override=proxy)
         if getattr(resp, "status_code", 0) >= 400:
-            raise requests.HTTPError(f"HTTP {resp.status_code}: {url}")
+            raise requests.HTTPError(f"HTTP {resp.status_code}: {url}", response=resp)
         try:
             total = int(resp.headers.get("Content-Length", 0) or 0)
         except (ValueError, TypeError):

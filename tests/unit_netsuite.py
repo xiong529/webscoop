@@ -50,6 +50,7 @@ def expect_raises(name, fn):
 
 # ---- 1. 代理池 ----
 from resources_reptile.utils.proxy import ProxyPool, current_pool, pool as _pool_singleton  # noqa: E402
+import resources_reptile.utils.proxy as _pmod  # noqa: E402
 
 
 def _test_proxy_pool():
@@ -87,6 +88,22 @@ def _test_proxy_pool():
     pn.revoke("8.8.8.8:80", "403")
     check("pool: plain revoke still counts", pn._fails.get("8.8.8.8:80") == 1
           and pn._revoked_until.get("8.8.8.8:80", 0) == 0)
+    # 健康检测：探活失败立即吊销（force），探活成功保留
+    orig_probe = _pmod._probe_one
+    _pmod._probe_one = lambda p, u, t: p == "7.7.7.7:80"
+    try:
+        ph = ProxyPool(proxies=["7.7.7.7:80", "9.9.9.9:80"])
+        res = ph.health_check(probe_url="http://probe.local/204", timeout=2)
+        check("pool: health reports both",
+              set(res) == {"7.7.7.7:80", "9.9.9.9:80"})
+        check("pool: health dead revoked",
+              res.get("9.9.9.9:80") is False
+              and "9.9.9.9:80" not in ph._candidates_locked())
+        check("pool: health alive kept", "7.7.7.7:80" in ph._candidates_locked())
+    finally:
+        _pmod._probe_one = orig_probe
+    pe = ProxyPool(proxies=[])
+    check("pool: health empty safe", pe.health_check() == {})
     # 空池（用空的缓存文件阻断项目 proxies.txt 的自动加载）
     with tempfile.TemporaryDirectory() as td:
         ef = os.path.join(td, "empty.txt")

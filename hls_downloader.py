@@ -7,8 +7,10 @@
 能力与边界：
 - 支持主播放列表（#EXT-X-STREAM-INF 多清晰度变速）→ 自动选最高带宽变体
 - 支持相对/绝对分片 URI、#EXT-X-BYTERANGE 偏移分片、注释行
+- 支持 AES-128 加密流（#EXT-X-KEY:METHOD=AES-128，pycryptodome 解密；
+  IV 未声明时按分片序号作默认 IV；密钥按 URI 缓存复用）
 - 分片并发下载（默认 8 线程）+ 单分片重试，失败即整体失败回退标准下载
-- 不支持：AES-128 加密流（#EXT-X-KEY:METHOD=AES-128，需密钥解密）、
+- 不支持：SAMPLE-AES 等其它加密方式、加密分片的 BYTERANGE 变体、
   直播流（无 #EXT-X-ENDLIST 且数量无限），报明确错误而不是卡死
 
 用法：
@@ -33,6 +35,9 @@ _M3U8_CTS = ("application/vnd.apple.mpegurl", "application/x-mpegurl",
              "audio/mpegurl", "audio/x-mpegurl")
 _EXTINF_RE = re.compile(r"#EXTINF:\s*([\d.]+)")
 _BYTERANGE_RE = re.compile(r"#EXT-X-BYTERANGE:\s*(\d+)(?:@(\d+))?")
+_KEY_ATTR_RE = re.compile(r'(\w+)=(?:"([^"]+)"|([^,"\s]+))')
+_KEY_CACHE: dict[str, bytes] = {}
+_KEY_CACHE_LOCK = threading.Lock()
 
 
 def is_hls(url: str, content_type: str = "") -> bool:
@@ -103,16 +108,48 @@ def _pick_variant(master: bytes, master_url: str) -> str:
     return _resolve_uri(master_url, best_url) if best_url else ""
 
 
+def _parse_key(line: str, playlist_url: str) -> dict | None:
+    """解析 #EXT-X-KEY 行 -> {uri, iv}；iv 为 bytes 或 None（用分片序号）。
+
+    METHOD=NONE 或无 METHOD 表示清除密钥；AES-128 之外的方法明确报错。
+    """
+    attrs: dict[str, str] = {}
+    for k, v1, v2 in _KEY_ATTR_RE.findall(line):
+        attrs[k.upper()] = v1 or v2
+    method = attrs.get("METHOD", "").strip().upper()
+    if not method or method == "NONE":
+        return None
+    if method != "AES-128":
+        raise _HlsError(f"暂不支持的加密方式: {method}")
+    uri = (attrs.get("URI") or "").strip()
+    iv: bytes | None = None
+    iv_hex = (attrs.get("IV") or "").strip()
+    if iv_hex:
+        h = iv_hex[2:] if iv_hex.lower().startswith("0x") else iv_hex
+        if len(h) % 2:
+            h = "0" + h
+        try:
+            iv = bytes.fromhex(h)
+        except ValueError:
+            raise _HlsError(f"非法的 IV: {iv_hex}")
+    return {"uri": _resolve_uri(playlist_url, uri) if uri else "", "iv": iv}
+
+
 def _parse_segments(playlist: bytes, playlist_url: str) -> list[dict]:
-    """解析播放列表为 [{uri, length, offset}, ...]（BYTERANGE 分片带偏移）。"""
+    """解析播放列表为 [{uri, length, offset, key}, ...]。
+
+    key 为当前生效的加密规格（#EXT-X-KEY），无加密时为 None。
+    """
     text = playlist.decode("utf-8", "replace")
-    if "#EXT-X-KEY:METHOD=AES-128" in text:
-        raise _HlsError("该流为 AES-128 加密，暂不支持（需密钥解密）")
     segs: list[dict] = []
+    key: dict | None = None
     pending_range: tuple[int, int] | None = None
     for line in text.splitlines():
         line = line.strip()
         if line.startswith("#"):
+            if line.startswith("#EXT-X-KEY"):
+                key = _parse_key(line, playlist_url)
+                continue
             m = _BYTERANGE_RE.search(line)
             if m:
                 pending_range = (int(m.group(1)), int(m.group(2) or 0))
@@ -123,18 +160,56 @@ def _parse_segments(playlist: bytes, playlist_url: str) -> list[dict]:
         if not uri:
             continue
         if pending_range:
-            segs.append({"uri": uri, "len": pending_range[0],
-                         "offset": pending_range[1]})
+            seg = {"uri": uri, "len": pending_range[0],
+                   "offset": pending_range[1], "key": key}
             pending_range = None
         else:
-            segs.append({"uri": uri, "len": 0, "offset": 0})
+            seg = {"uri": uri, "len": 0, "offset": 0, "key": key}
+        if key and seg["len"]:
+            raise _HlsError("加密分片暂不支持 BYTERANGE 变体")
+        segs.append(seg)
     if not segs:
         raise _HlsError("播放列表无分片")
     return segs
 
 
-def _download_segment(url: str, referer: str, offset: int, length: int) -> bytes:
-    """下载单个分片（BYTERANGE 时带 Range 头），返回原始字节。"""
+def _fetch_key(key_uri: str) -> bytes:
+    """获取 AES-128 密钥（按 URI 缓存复用；失败抛 _HlsError）。"""
+    if not key_uri:
+        raise _HlsError("缺少密钥 URI")
+    with _KEY_CACHE_LOCK:
+        if key_uri in _KEY_CACHE:
+            return _KEY_CACHE[key_uri]
+    key = _fetch(key_uri, referer="", timeout=20)
+    if len(key) not in (16, 24, 32):
+        raise _HlsError(f"密钥长度非法（{len(key)} 字节）")
+    with _KEY_CACHE_LOCK:
+        _KEY_CACHE[key_uri] = key
+    return key
+
+
+def _decrypt_segment(data: bytes, key_spec: dict, seq: int) -> bytes:
+    """AES-128-CBC 解密单个分片（PKCS7 去填充）。"""
+    try:
+        from Crypto.Cipher import AES
+    except ImportError:
+        raise _HlsError("缺少 pycryptodome 库（pip install pycryptodome）")
+    if len(data) % 16:
+        raise _HlsError("分片长度非 16 对齐（加密流异常）")
+    key = _fetch_key(key_spec["uri"])
+    iv = key_spec["iv"] if key_spec["iv"] is not None else seq.to_bytes(16, "big")
+    if len(iv) != 16:
+        raise _HlsError("非法 IV 长度")
+    plain = AES.new(key, AES.MODE_CBC, iv).decrypt(data)
+    n = plain[-1]
+    if n < 1 or n > 16 or plain[-n:] != bytes([n]) * n:
+        raise _HlsError("分片 PKCS7 填充校验失败")
+    return plain[:-n]
+
+
+def _download_segment(url: str, referer: str, offset: int, length: int,
+                      key: dict | None = None, seq: int = 0) -> bytes:
+    """下载单个分片（BYTERANGE 时带 Range 头；加密流解密后返回明文）。"""
     from gui_fetch import FetchSession
     hdrs = {"Referer": referer} if referer else {}
     if length > 0:
@@ -148,6 +223,8 @@ def _download_segment(url: str, referer: str, offset: int, length: int) -> bytes
     if length > 0:
         # 服务器若不支持 Range（仍回 200 全文），截断到请求长度防重复
         data = data[:length]
+    if key:
+        data = _decrypt_segment(data, key, seq)
     return data
 
 
@@ -185,7 +262,7 @@ def download_hls(url: str, dest_dir: str, out_name: str = "stream",
             for _ in range(3):
                 try:
                     data = _download_segment(seg["uri"], referer, seg["offset"],
-                                             seg["len"])
+                                             seg["len"], seg.get("key"), idx)
                     with open(tmp, "wb") as f:
                         f.write(data)
                     return

@@ -9,3 +9,5 @@ curl_cffi>=0.16.0
 python-vlc>=3.0.18
 # Fallback downloader covering 1400+ sites (GUI "backup download" button)
 gallery-dl>=1.25
+# AES-128 decryption for encrypted HLS streams
+pycryptodome>=3.20

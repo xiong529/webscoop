@@ -9,6 +9,7 @@
 - load：从 proxies.txt / 环境变量 / Scrapy 设置一次性加载并缓存
 - next()：轮换挑选（可绑定站点，同一站点尽量用同一出口，避免抖 IP）
 - revoke()：失败吊销，进入冷却，冷却期后重新可用（避免误杀临时抖动）
+- health_check()：启动并发探活，死代理提前吊销（避免首个请求撞坏代理）
 - 与 config.DEFAULT_PROXY 的关系：DEFAULT_PROXY 是「本机中转」，仍优先生效；
   代理池在无默认代理或默认代理失败时接管（保持历史语义，但真正生效）
 """
@@ -20,7 +21,11 @@ import random
 import re
 import threading
 import time
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+PROBE_DEFAULT_URL = "http://www.gstatic.com/generate_204"
 
 _PROXY_PATTERN = re.compile(
     r"^(?P<scheme>https?|socks[45]|http)://"
@@ -68,6 +73,25 @@ def get_random_proxy(source: str = "") -> str | None:
 
 def _pick_random(proxies: list[str]) -> str | None:
     return random.choice(proxies) if proxies else None
+
+
+def _probe_one(proxy: str, probe_url: str, timeout: float) -> bool:
+    """走代理探测一次：2xx/3xx 视为可用。
+
+    socks 代理无法用 urllib 探测，跳过视为可用（靠请求时失败吊销兜底）。
+    """
+    if proxy.startswith("socks"):
+        return True
+    try:
+        entry = proxy if "://" in proxy else "http://" + proxy
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": entry, "https": entry}))
+        req = urllib.request.Request(
+            probe_url, headers={"User-Agent": "webscoop-health/1.0"})
+        with opener.open(req, timeout=timeout) as resp:
+            return 200 <= resp.status < 400
+    except Exception:
+        return False
 
 
 class ProxyPool:
@@ -169,6 +193,31 @@ class ProxyPool:
             return
         with self._lock:
             self._fails.pop(proxy, None)
+
+    def health_check(self, probe_url: str = "", timeout: float = 5.0,
+                     concurrency: int = 8) -> dict[str, bool]:
+        """并发探活池内所有代理；不可用的立即吊销（force），返回 proxy -> ok。
+
+        probe_url 为空用默认探针；socks 代理跳过（视为可用）。
+        """
+        with self._lock:
+            targets = list(self._proxies)
+        if not targets:
+            return {}
+        results: dict[str, bool] = {}
+        res_lock = threading.Lock()
+
+        def probe(p: str) -> None:
+            ok = _probe_one(p, probe_url or PROBE_DEFAULT_URL, timeout)
+            with res_lock:
+                results[p] = ok
+            if not ok:
+                self.revoke(p, "health-fail", force=True)
+
+        threads = []
+        with ThreadPoolExecutor(max_workers=concurrency) as ex:
+            list(ex.map(probe, targets))
+        return results
 
     @property
     def size(self) -> int:

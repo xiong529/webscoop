@@ -12,7 +12,13 @@ import config  # noqa
 config.DEFAULT_PROXY = ""  # 测试不依赖代理
 
 from discover_common import is_download_endpoint  # noqa
-from gui_crawler import _code_retryable, load_failures, save_failures  # noqa
+from gui_crawler import (  # noqa
+    _code_retryable,
+    _exc_status,
+    _retry_after_seconds,
+    load_failures,
+    save_failures,
+)
 from resources_reptile.dupefilters import NormalizedRFPDupeFilter, strip_tracking_params  # noqa
 from resources_reptile.pipelines import classify_url, ct_to_ext  # noqa
 
@@ -102,6 +108,29 @@ check("retry times config", isinstance(config.DOWNLOAD_RETRY_TIMES, int)
       and config.DOWNLOAD_RETRY_TIMES >= 1, True)
 check("backoff config", isinstance(config.DOWNLOAD_RETRY_BACKOFF, (int, float))
       and config.DOWNLOAD_RETRY_BACKOFF > 0, True)
+
+# 状态码提取与 Retry-After 解析（智能重试分桶）
+import requests
+from types import SimpleNamespace
+_err = requests.HTTPError("HTTP 404: http://x/1", response=SimpleNamespace(
+    status_code=404, headers={}))
+check("exc status from response", _exc_status(_err), 404)
+check("exc status from message", _exc_status(
+    requests.HTTPError("HTTP 503: http://x/2")), 503)
+check("exc status network err", _exc_status(OSError("timeout")), 0)
+_err429 = requests.HTTPError("HTTP 429: http://x/3", response=SimpleNamespace(
+    status_code=429, headers={"Retry-After": "12"}))
+check("retry-after seconds", _retry_after_seconds(_err429), 12.0)
+check("retry-after none", _retry_after_seconds(
+    requests.HTTPError("HTTP 429: x", response=SimpleNamespace(
+        status_code=429, headers={}))), 0.0)
+check("retry-after http-date", _retry_after_seconds(
+    requests.HTTPError("HTTP 429: x", response=SimpleNamespace(
+        status_code=429,
+        headers={"Retry-After": "Sun, 06 Nov 2099 08:49:37 GMT"}))) > 0.0, True)
+check("retry-after garbage", _retry_after_seconds(
+    requests.HTTPError("HTTP 429: x", response=SimpleNamespace(
+        status_code=429, headers={"Retry-After": "abc"}))), 0.0)
 
 # ---- 5. failures.json 读写 ----
 import tempfile

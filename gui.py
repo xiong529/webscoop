@@ -2054,7 +2054,20 @@ class ResourceApp:
         self.root.destroy()
 
 
+def _pool_health_bg(probe_url: str):
+    """启动后台探活代理池：死代理提前吊销，不阻塞界面（失败静默）。"""
+    try:
+        from resources_reptile.utils.proxy import current_pool
+        pool = current_pool()
+        if pool.size:
+            pool.health_check(probe_url=probe_url)
+    except Exception:
+        pass
+
+
 def main():
+    threading.Thread(target=_pool_health_bg,
+                     args=(config.PROXY_HEALTH_PROBE,), daemon=True).start()
     root = tk.Tk()
     ResourceApp(root)
     root.mainloop()
