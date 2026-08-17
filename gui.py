@@ -462,69 +462,73 @@ class ResourceApp:
                                      command=self.backup_download)
         self.backup_btn.pack(side=tk.LEFT, padx=4)
 
-        # ---- 抓取设置栏 ----
+        # ---- 抓取设置栏（两排：设置项 / 便利功能按钮） ----
         sbar = ttk.LabelFrame(self.root, text="抓取设置", padding=6)
         sbar.pack(fill=tk.X, padx=8)
 
-        ttk.Label(sbar, text="指纹:").pack(side=tk.LEFT)
+        row1 = ttk.Frame(sbar)
+        row1.pack(fill=tk.X)
+
+        ttk.Label(row1, text="指纹:").pack(side=tk.LEFT)
         self.imp_var = tk.StringVar(value=config.IMPERSONATE)
-        self.imp_box = ttk.Combobox(sbar, textvariable=self.imp_var, width=14,
+        self.imp_box = ttk.Combobox(row1, textvariable=self.imp_var, width=14,
                                     values=config.IMPERSONATE_OPTIONS, state="readonly")
         self.imp_box.pack(side=tk.LEFT, padx=(2, 10))
 
         self.proxy_var = tk.BooleanVar(value=config.PROXY_ENABLED)
-        ttk.Checkbutton(sbar, text="启用代理", variable=self.proxy_var).pack(side=tk.LEFT, padx=6)
+        ttk.Checkbutton(row1, text="启用代理", variable=self.proxy_var).pack(side=tk.LEFT, padx=6)
 
         self.render_var = tk.BooleanVar(value=config.RENDER_MODE)
-        ttk.Checkbutton(sbar, text="渲染模式", variable=self.render_var) \
-            .pack(side=tk.LEFT, padx=6)
-        _bind_tooltip(sbar, "无头浏览器渲染页面后再发现资源（静态抓不到的 JS 站点勾选）")
+        self.render_chk = ttk.Checkbutton(row1, text="渲染模式", variable=self.render_var)
+        self.render_chk.pack(side=tk.LEFT, padx=6)
+        _bind_tooltip(self.render_chk, "无头浏览器渲染页面后再发现资源（静态抓不到的 JS 站点勾选）")
 
         self.resume_var = tk.BooleanVar(value=config.RESUME_EXISTING)
-        ttk.Checkbutton(sbar, text="断点续载", variable=self.resume_var).pack(side=tk.LEFT, padx=6)
+        ttk.Checkbutton(row1, text="断点续载", variable=self.resume_var).pack(side=tk.LEFT, padx=6)
 
-        ttk.Label(sbar, text="并发:").pack(side=tk.LEFT, padx=(10, 2))
+        ttk.Label(row1, text="并发:").pack(side=tk.LEFT, padx=(10, 2))
         self.workers_var = tk.StringVar(value=str(config.DOWNLOAD_WORKERS))
-        self.workers_spin = ttk.Spinbox(sbar, from_=1, to=config.DOWNLOAD_WORKERS_MAX,
+        self.workers_spin = ttk.Spinbox(row1, from_=1, to=config.DOWNLOAD_WORKERS_MAX,
                                         width=3, textvariable=self.workers_var)
         self.workers_spin.pack(side=tk.LEFT, padx=(0, 10))
 
-        ttk.Label(sbar, text="下载目录:").pack(side=tk.LEFT)
+        ttk.Label(row1, text="下载目录:").pack(side=tk.LEFT)
         self.outdir_var = tk.StringVar(value=INFORMATION_DIR)
-        self.outdir_entry = ttk.Entry(sbar, textvariable=self.outdir_var, width=22)
+        self.outdir_entry = ttk.Entry(row1, textvariable=self.outdir_var, width=22)
         self.outdir_entry.pack(side=tk.LEFT, padx=4)
-        ttk.Button(sbar, text="浏览", command=self._choose_dir).pack(side=tk.LEFT)
+        ttk.Button(row1, text="浏览", command=self._choose_dir).pack(side=tk.LEFT)
 
         # ---- 文件大小范围过滤 ----
-        ttk.Label(sbar, text=" 大小范围:").pack(side=tk.LEFT, padx=(8, 2))
+        ttk.Label(row1, text=" 大小范围:").pack(side=tk.LEFT, padx=(8, 2))
         self.min_size_var = tk.StringVar(value=str(config.MIN_RESOURCE_SIZE))
-        self.min_size_entry = ttk.Entry(sbar, textvariable=self.min_size_var, width=6)
+        self.min_size_entry = ttk.Entry(row1, textvariable=self.min_size_var, width=6)
         self.min_size_entry.pack(side=tk.LEFT)
-        ttk.Label(sbar, text="~").pack(side=tk.LEFT)
+        ttk.Label(row1, text="~").pack(side=tk.LEFT)
         self.max_size_var = tk.StringVar(value="0")
-        self.max_size_entry = ttk.Entry(sbar, textvariable=self.max_size_var, width=8)
+        self.max_size_entry = ttk.Entry(row1, textvariable=self.max_size_var, width=8)
         self.max_size_entry.pack(side=tk.LEFT)
-        ttk.Label(sbar, text="KB").pack(side=tk.LEFT, padx=(2, 4))
-        ttk.Button(sbar, text="按大小过滤", command=self.apply_size_filter).pack(side=tk.LEFT)
+        ttk.Label(row1, text="KB").pack(side=tk.LEFT, padx=(2, 4))
+        ttk.Button(row1, text="按大小过滤", command=self.apply_size_filter).pack(side=tk.LEFT)
 
-        # ---- 便利功能按钮栏 ----
-        tools = ttk.Frame(sbar)
-        tools.pack(side=tk.RIGHT)
-        ttk.Button(tools, text="随机选N", command=self.random_select).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tools, text="复制链接", command=self.copy_links).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tools, text="打开页面", command=self.open_page).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tools, text="关键词搜索…", command=self.open_search_dialog).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tools, text="热点模式…", command=self.open_hot_dialog).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tools, text="定时跟进…", command=self.open_follow_dialog).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tools, text="去重", command=self.dedupe).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tools, text="重试失败", command=self.retry_failed).pack(side=tk.LEFT, padx=2)
-        self.api_btn = ttk.Button(tools, text="API 抓取…", command=self.open_api_dialog)
+        # ---- 便利功能按钮栏（第二排，功能多不再挤一排） ----
+        row2 = ttk.Frame(sbar)
+        row2.pack(fill=tk.X, pady=(6, 0))
+        ttk.Label(row2, text="功能:").pack(side=tk.LEFT)
+        ttk.Button(row2, text="随机选N", command=self.random_select).pack(side=tk.LEFT, padx=2)
+        ttk.Button(row2, text="复制链接", command=self.copy_links).pack(side=tk.LEFT, padx=2)
+        ttk.Button(row2, text="打开页面", command=self.open_page).pack(side=tk.LEFT, padx=2)
+        ttk.Button(row2, text="关键词搜索…", command=self.open_search_dialog).pack(side=tk.LEFT, padx=2)
+        ttk.Button(row2, text="热点模式…", command=self.open_hot_dialog).pack(side=tk.LEFT, padx=2)
+        ttk.Button(row2, text="定时跟进…", command=self.open_follow_dialog).pack(side=tk.LEFT, padx=2)
+        ttk.Button(row2, text="去重", command=self.dedupe).pack(side=tk.LEFT, padx=2)
+        ttk.Button(row2, text="重试失败", command=self.retry_failed).pack(side=tk.LEFT, padx=2)
+        self.api_btn = ttk.Button(row2, text="API 抓取…", command=self.open_api_dialog)
         self.api_btn.pack(side=tk.LEFT, padx=2)
         _bind_tooltip(self.api_btn, "Pexels 官方接口抓取（弹窗操作，避免与爬虫界面混排）")
-        self.llm_btn = ttk.Button(tools, text="LLM 模型…", command=self.open_llm_dialog)
+        self.llm_btn = ttk.Button(row2, text="LLM 模型…", command=self.open_llm_dialog)
         self.llm_btn.pack(side=tk.LEFT, padx=2)
         _bind_tooltip(self.llm_btn, "配置 LLM（接口地址 / API Key / 模型名）并测试连接，供 llm_rules.py 生成高清规则")
-        self.cookie_btn = ttk.Button(tools, text="登录抓 Cookie…", command=self.open_cookie_dialog)
+        self.cookie_btn = ttk.Button(row2, text="登录抓 Cookie…", command=self.open_cookie_dialog)
         self.cookie_btn.pack(side=tk.LEFT, padx=2)
         _bind_tooltip(self.cookie_btn, "弹出真实浏览器手动登录（独立临时上下文，不碰日常浏览器数据），"
                                       "登录后把 Cookie 写入 cookies.txt 供需要登录态的站点注入")
