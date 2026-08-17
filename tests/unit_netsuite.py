@@ -150,6 +150,7 @@ with tempfile.TemporaryDirectory() as td:
 # ---- 3. 平台适配器 ----
 from platform_adapters import (  # noqa: E402
     PLATFORM_ADAPTERS,
+    BilibiliAdapter,
     DouyinAdapter,
     KuaishouAdapter,
     XiaohongshuAdapter,
@@ -254,6 +255,52 @@ check("adapter: xhs image prefers urlOrigin",
 dy2 = extract_media_from_api([sample_api, sample_api],
                              url="https://www.douyin.com/user/xxx")
 check("adapter: dedupe across apis", len(dy2) == 2)
+
+# bilibili：页面匹配 / 短链 / 过滤特征
+check("adapter: bilibili page match",
+      isinstance(page_adapter("https://www.bilibili.com/video/BV1xx411c7mD"),
+                 BilibiliAdapter))
+check("adapter: b23.tv short link match",
+      isinstance(page_adapter("https://b23.tv/abc123"), BilibiliAdapter))
+check("adapter: bilibili filters",
+      api_filters_for("https://www.bilibili.com/video/BV1xx")
+      == ("api.bilibili.com/",))
+
+# bilibili DASH：元信息 + 三档视频流，默认 cap 1080
+bili_api = {"code": 0, "data": {
+    "bvid": "BV1xx411c7mD",
+    "title": "测试视频",
+    "pic": "https://i0.hdslb.com/bfs/archive/x.jpg",
+    "dash": {"video": [
+        {"id": 32, "height": 480, "width": 854,
+         "baseUrl": "https://upos-sz.bilivideo.com/a/480p.mp4"},
+        {"id": 80, "height": 1080, "width": 1920,
+         "baseUrl": "https://upos-sz.bilivideo.com/a/1080p.mp4"},
+        {"id": 112, "height": 2160, "width": 3840,
+         "baseUrl": "https://upos-sz.bilivideo.com/a/4k.mp4"},
+    ]},
+}}
+bili_items = extract_media_from_api(
+    [bili_api], url="https://www.bilibili.com/video/BV1xx")
+check("adapter: bilibili dash extracts 1", len(bili_items) == 1)
+check("adapter: bilibili picks 1080p (cap)",
+      "1080p" in bili_items[0]["url"] and bili_items[0]["height"] == 1080)
+check("adapter: bilibili name from view", bili_items[0]["name"] == "测试视频")
+check("adapter: bilibili preview pic",
+      bili_items[0]["preview"] == "https://i0.hdslb.com/bfs/archive/x.jpg")
+
+# bilibili durl 回退（无 DASH 时）
+bili_durl = {"code": 0, "data": {"title": "t", "durl": [
+    {"url": "https://upos-sz.bilivideo.com/d.flv", "size": 999}]}}
+bili_d = extract_media_from_api(
+    [bili_durl], url="https://www.bilibili.com/video/BV1xx")
+check("adapter: bilibili durl fallback",
+      len(bili_d) == 1 and bili_d[0]["size"] == 999)
+
+# bilibili 空响应安全
+check("adapter: bilibili empty safe",
+      extract_media_from_api([{"code": 0, "data": {}}],
+                             url="https://www.bilibili.com/video/BV1xx") == [])
 
 # ---- 4. mkv 畸形头防护 ----
 from discover_common import mkv_dimensions  # noqa: E402

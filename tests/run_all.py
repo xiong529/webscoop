@@ -16,6 +16,7 @@ TESTS = os.path.join(ROOT, "tests")
 
 SUITES = {
     "unit_common": "发现核心逻辑:视频择优 / 极小文件 / 高清 / og / 文件头",
+    "unit_format_selector": "格式选择器:spec 解析 / 条件过滤 / best-worst / URL 择优",
     "unit_features": "新功能:去重 / MIME / robots / 重试 / failures.json / 渲染冒烟",
     "unit_netsuite": "网络层:代理池 / Cookie 注入 / 平台适配器 / mkv 上限 / stats",
     "unit_hls": "HLS m3u8 分片下载:变体选择 / 并发合并 / BYTERANGE / 失败路径",

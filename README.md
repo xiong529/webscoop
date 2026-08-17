@@ -30,10 +30,12 @@ GUI 下全程鼠标操作，不用写代码。
 - **分页跟随**：自动抓取 `?page=N` 等后续页并合并（`PAGE_FOLLOW_LIMIT`）；
 - **详情页跟进**：按路径特征（`/photo/xxx`、`/video/xxx` 等）批量跟进内容页，提取
   og:image / 真实视频直链（`DETAIL_PAGE_LIMIT`）；
-- **平台适配器**（抖音/快手/小红书）：页面命中适配器后自动走「渲染 + 捕获接口 JSON + 提取」
-  路径——即使未勾选渲染模式，也会强制渲染并捕获页面发出的接口数据，从
+- **平台适配器**（抖音/快手/小红书/B站）：适配器目录化（`platform_adapters/` 一平台一模块，
+  启动自动扫描注册，新增平台=丢一个文件）。页面命中适配器后自动走「渲染 + 捕获接口 JSON +
+  提取」路径——即使未勾选渲染模式，也会强制渲染并捕获页面发出的接口数据，从
   `aweme_list` 等字段提取真实作品（含视频直链、封面、标题）。支持抖音分享短链
-  `v.douyin.com/xxx` 与 `iesdouyin.com/share/user/...` 主页。
+  `v.douyin.com/xxx` 与 `iesdouyin.com/share/user/...` 主页、B站 `b23.tv` 短链
+  （B站取 DASH 流，统一格式选择器默认 `best[height<=1080]`）。
 
 ### 下载与保存
 - 类型自动识别（MIME 嗅探 + 扩展名），按 `images / videos / audios / docs / software /
@@ -272,10 +274,11 @@ webscoop/
 ├── player_vlc.py           # VLC 在线播放器
 ├── hls_downloader.py       # m3u8 分片下载合并
 ├── llm_rules.py            # LLM 高清规则生成器
-├── platform_adapters.py    # 抖音/快手/小红书适配器（渲染 + 接口提取）
+├── platform_adapters/       # 平台适配器目录（一平台一模块，自动注册）
+├── format_selector.py       # 统一格式选择器（best[height<=1080] 语法）
 ├── highres_rules.json      # 缩略图 → 高清原图规则表
 ├── resources_reptile/      # Scrapy 工程（爬虫/中间件/管道/去重/下载处理器）
-├── tests/                  # 13 套回归测试
+├── tests/                  # 14 套回归测试
 ├── information/            # GUI 下载目录
 └── downloads/              # Scrapy 下载目录
 ```

@@ -531,11 +531,9 @@ def dimensions_from_head(data: bytes, kind: str):
 # 视频变体挑选 / pexels 封面映射
 # ================================================================
 
-_RES_RE = re.compile(r"(\d{3,4})[xX×_](\d{3,4})")
-
 
 def pick_best_video(candidates: list[str]) -> str:
-    """从候选视频 URL 里选最高清的一个。
+    """从候选视频 URL 里选最高清的一个（统一格式选择器的 best 语义）。
 
     排序规则（从优到劣）：
     1) 分辨率：文件名中的 `WxH` / `_W_H_` 强模式（宽高均限 3-4 位，
@@ -545,23 +543,8 @@ def pick_best_video(candidates: list[str]) -> str:
     注意：不用裸 `(\\d+)[x_](\\d+)` —— 那会把 `abc_2026.mp4` 之类
     的文件名误判成分辨率。
     """
-
-    def score(u: str) -> tuple:
-        name = u.rsplit("/", 1)[-1]
-        m = _RES_RE.search(name)
-        res = (int(m.group(1)) * int(m.group(2))) if m else 0
-        variant = 0
-        if "_large" in name or "large" in name:
-            variant = 3
-        elif "_medium" in name or "medium" in name:
-            variant = 2
-        elif "_small" in name or "small" in name:
-            variant = 1
-        elif "_tiny" in name or "tiny" in name:
-            variant = 0
-        return (res, variant)
-
-    return max(candidates, key=score)
+    from format_selector import pick_video_url
+    return pick_video_url(candidates, "best")
 
 
 _PEXELS_COVER_RE = re.compile(
