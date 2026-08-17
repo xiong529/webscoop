@@ -9,7 +9,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from discover_common import (  # noqa
+from discover_common import (
     extract_media_from_html,
     highres_url,
     is_tiny,
@@ -18,7 +18,7 @@ from discover_common import (  # noqa
     pick_best_video,
     video_highres_url,
 )
-from gui_crawler import Resource  # noqa
+from gui_crawler import Resource
 
 PASS = 0
 FAIL = 0
@@ -97,6 +97,28 @@ html2 = """<html><body><video poster="/p.jpg"><source src="/media/c.mp4"/></vide
 m2 = extract_media_from_html(html2, "https://example.com/")
 check("video tag source", m2["video_url"], "/media/c.mp4")
 
+# --- B 站 __playinfo__ 内嵌 DASH 提取 ---
+from discover_common import playinfo_video_url
+
+play_html = """<html><head><script>window.__playinfo__={"code":0,"data":{"dash":{"video":[
+  {"id":32,"height":480,"width":854,"baseUrl":"https://upos-sz.bilivideo.com/480p.m4s"},
+  {"id":80,"height":1080,"width":1920,"baseUrl":"https://upos-sz.bilivideo.com/1080p.m4s"},
+  {"id":112,"height":2160,"width":3840,"baseUrl":"https://upos-sz.bilivideo.com/4k.m4s"}]}}}
+</script></head><body><div id="app"></div></body></html>"""
+check("playinfo: 默认 cap 1080",
+      playinfo_video_url(play_html), "https://upos-sz.bilivideo.com/1080p.m4s")
+check("playinfo: 无 playinfo 返回空", playinfo_video_url("<html></html>"), "")
+check("playinfo: 空串安全", playinfo_video_url(""), "")
+m3 = extract_media_from_html(play_html, "https://www.bilibili.com/video/BV1xx")
+check("extract: playinfo 兜底进 video_url",
+      m3["video_url"], "https://upos-sz.bilivideo.com/1080p.m4s")
+
+# durl 回退（无 DASH）
+play_durl = """<script>window.__playinfo__={"data":{"durl":[{"url":"https://upos-sz.bilivideo.com/a.flv"}]}}</script>"""
+check("playinfo: durl 回退",
+      playinfo_video_url(play_durl), "https://upos-sz.bilivideo.com/a.flv")
+check("playinfo: 坏 JSON 安全", playinfo_video_url("<script>window.__playinfo__={oops</script>"), "")
+
 # --- looks_like_image avif ---
 p = os.path.join(tempfile.gettempdir(), "t_avif_check.avif")
 with open(p, "wb") as f:
@@ -105,7 +127,7 @@ check("avif magic ok", looks_like_image(p), True)
 os.remove(p)
 
 # --- render_dest_template 文件名模板 ---
-from discover_common import render_dest_template  # noqa
+from discover_common import render_dest_template
 r = Resource("https://img.example.com/path/photo-12345-1920.jpg",
              page_url="https://example.com/gallery/pegasus",
              title="Pegasus 壁纸", name="photo-12345.jpg", size=2048)
@@ -132,8 +154,8 @@ check("traversal neutralized",
       "images/photo-12345.jpg")
 
 # --- regex_sub 通用正则变换器（LLM 规则生成的安全出口） ---
-from urllib.parse import urlparse  # noqa
-from discover_common import _apply_regex_sub  # noqa
+from urllib.parse import urlparse
+from discover_common import _apply_regex_sub
 rp = urlparse("https://cdn.example.com/a/hello-768x432.jpg?q=1")
 rp2 = _apply_regex_sub(rp, {"search": r"-\d{3,4}x\d{3,4}", "replace": ""})
 check("regex_sub strip suffix", rp2.path, "/a/hello.jpg")

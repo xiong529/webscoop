@@ -18,7 +18,6 @@ import io
 import os
 import queue
 import random
-import shutil
 import threading
 import time
 import tkinter as tk
@@ -27,9 +26,10 @@ import webbrowser
 
 from PIL import Image, ImageTk
 
+from applog import log, setup_logging
 import config
 from api_discoverer import PRESETS, ApiDiscoverer, build_preset_url
-from gui_crawler import (REQUEST_TIMEOUT, Discoverer, Downloader, Resource,
+from gui_crawler import (Discoverer, Downloader, Resource,
                          highres_url, load_failures)
 from gui_fetch import FetchSession
 from llm_rules import load_llm_config, save_llm_config, test_connection
@@ -335,7 +335,6 @@ class LlmDialog(tk.Toplevel):
         body.pack(fill=tk.BOTH, expand=True)
 
         cfg = load_llm_config()
-        make_var = tk.StringVar(value="")
 
         r0 = ttk.Frame(body)
         r0.pack(fill=tk.X)
@@ -427,6 +426,8 @@ class ResourceApp:
         self._backup_cancel = threading.Event()   # 备用下载/预览阶段取消标记
         self._stop_event = threading.Event()   # 发现/抓取阶段停止标记（「停止」按钮）
         self.seen_urls: set[str] = set()   # 本次会话已见过的 URL（去重）
+        self.follow_active = False         # 定时跟进调度是否运行中
+        self._follow_stop = threading.Event()
         self._impersonate_rot = 0          # 指纹轮换游标
         self._min_size_filter = 0          # 大小范围过滤（KB），未点「应用」前不预设
         self._max_size_filter = 0
@@ -513,6 +514,7 @@ class ResourceApp:
         ttk.Button(tools, text="打开页面", command=self.open_page).pack(side=tk.LEFT, padx=2)
         ttk.Button(tools, text="关键词搜索…", command=self.open_search_dialog).pack(side=tk.LEFT, padx=2)
         ttk.Button(tools, text="热点模式…", command=self.open_hot_dialog).pack(side=tk.LEFT, padx=2)
+        ttk.Button(tools, text="定时跟进…", command=self.open_follow_dialog).pack(side=tk.LEFT, padx=2)
         ttk.Button(tools, text="去重", command=self.dedupe).pack(side=tk.LEFT, padx=2)
         ttk.Button(tools, text="重试失败", command=self.retry_failed).pack(side=tk.LEFT, padx=2)
         self.api_btn = ttk.Button(tools, text="API 抓取…", command=self.open_api_dialog)
@@ -676,6 +678,94 @@ class ResourceApp:
             return
         HotDialog(self)
 
+    def open_follow_dialog(self):
+        """打开「定时跟进」弹窗：关注列表 + 轮询调度（后台线程）。"""
+        dlg = getattr(self, "_follow_dialog", None)
+        if dlg is not None and dlg.winfo_exists():
+            dlg.lift()
+            dlg.focus_force()
+            return
+        FollowDialog(self)
+
+    def start_follow(self, interval_min: int):
+        """启动定时跟进（后台线程，不占用 busy；发现并入列表且按 URL 去重）。"""
+        if self.busy:
+            messagebox.showinfo("提示", "当前有任务进行中，请先完成或停止")
+            return
+        self.follow_active = True
+        self._follow_stop = threading.Event()
+        threading.Thread(target=self._follow_worker, args=(interval_min, False),
+                         daemon=True).start()
+
+    def run_follow_once(self):
+        """立即跑一轮跟进（不循环）。"""
+        if self.busy:
+            messagebox.showinfo("提示", "当前有任务进行中，请先完成或停止")
+            return
+        self.follow_active = True
+        self._follow_stop = threading.Event()
+        threading.Thread(target=self._follow_worker, args=(0, True),
+                         daemon=True).start()
+
+    def stop_follow(self):
+        """停止定时跟进（当前页探测完即止）。"""
+        ev = getattr(self, "_follow_stop", None)
+        self.follow_active = False
+        if ev is not None:
+            ev.set()
+
+    def _follow_add_live(self, r: Resource):
+        """跟进发现的资源：按 URL 去重后上屏（worker 线程调用）。"""
+        if r.url in self.seen_urls:
+            return
+        self.seen_urls.add(r.url)
+        self.queue.put(("res_item", r))
+
+    def _follow_worker(self, interval_min: int, one_shot: bool):
+        ev = self._follow_stop
+        log.info("定时跟进启动 one_shot=%s 间隔=%s 分钟", one_shot, interval_min)
+        try:
+            from gui_crawler import Discoverer
+            import follow_list
+            while not ev.is_set():
+                targets = follow_list.urls()
+                if not targets:
+                    self.queue.put(("follow_tick", "定时跟进：关注列表为空，等待添加"))
+                else:
+                    ok_pages = 0
+                    self.queue.put(
+                        ("follow_tick", f"定时跟进：开始扫 {len(targets)} 个页面…"))
+                    log.info("跟进轮次开始 页面数=%d", len(targets))
+                    for u in targets:
+                        if ev.is_set():
+                            break
+                        d = Discoverer(session=self._make_session(),
+                                       render_mode=True, stop_event=ev,
+                                       on_resource=self._follow_add_live)
+                        try:
+                            d.discover(u)
+                            ok_pages += 1
+                        except Exception as exc:
+                            log.warning("跟进页面失败 %s: %s", u[:120], exc)
+                            self.queue.put(
+                                ("follow_tick", f"[跟进] {u[:60]} 失败: {exc}"))
+                    self.queue.put(("follow_done", ok_pages))
+                    log.info("跟进轮次结束 成功页=%d", ok_pages)
+                if one_shot:
+                    break
+                if ev.is_set():
+                    break
+                deadline = time.time() + interval_min * 60
+                while time.time() < deadline and not ev.is_set():
+                    time.sleep(0.5)
+        except Exception as exc:
+            log.exception("定时跟进异常")
+            self.queue.put(("follow_tick", f"定时跟进异常: {exc}"))
+        finally:
+            self.follow_active = False
+            log.info("定时跟进结束")
+            self.queue.put(("follow_tick", "定时跟进已停止"))
+
     def _api_dialog_busy(self, busy: bool):
         """联动 API 弹窗的忙状态（发现/API 抓取互斥期间的按钮切换）。"""
         dlg = getattr(self, "_api_dialog", None)
@@ -732,6 +822,9 @@ class ResourceApp:
     def discover(self, rotate_fingerprint: bool = False):
         if self.busy:
             return
+        if self.follow_active:
+            messagebox.showinfo("提示", "定时跟进运行中：请先到「定时跟进」弹窗停止，再手动发现")
+            return
         url = self.url_var.get().strip()
         if not url:
             messagebox.showwarning("提示", "请输入网址")
@@ -759,6 +852,8 @@ class ResourceApp:
         self.status_var.set(f"正在发现 {url} （指纹: {self.imp_var.get()}, 代理: {'开' if self.proxy_var.get() else '关'}）...")
         self.progress.config(mode="indeterminate")
         self.progress.start(12)
+        log.info("发现开始 url=%s 指纹=%s 代理=%s 渲染=%s",
+                 url, self.imp_var.get(), self.proxy_var.get(), self.render_var.get())
         threading.Thread(target=self._discover_worker, args=(url,), daemon=True).start()
 
     def refresh(self):
@@ -785,6 +880,8 @@ class ResourceApp:
             self.seen_urls = {r.url for r in resources}
             filtered = d.filtered_count + d.filtered_icons
             stopped = bool(self._stop_event.is_set())
+            log.info("发现完成 url=%s 资源=%d 过滤=%d 停止=%s",
+                     url, len(resources), filtered, stopped)
             self.queue.put(("discovered", resources, title, filtered, stopped))
             if not stopped:
                 # 内置发现完成后，自动用 gallery-dl 补充（合并去重，无则静默）
@@ -1048,10 +1145,16 @@ class ResourceApp:
                     more = f" 等 {len(failed_names)} 个" if len(failed_names) > 3 else ""
                     msg += "\n失败原因示例：" + " | ".join(shown) + more
                 self.queue.put(("done", msg, outdir, total_ok))
+                log.info("下载完成 成功=%d 失败=%d 目录=%s",
+                         dl.stat.downloaded, dl.stat.failed, outdir)
+                if dl.failures:
+                    log.warning("下载失败明细 %s",
+                                {k: str(v)[:120] for k, v in dl.failures.items()})
                 return
             except Exception as exc:
                 import traceback
                 traceback.print_exc()
+                log.exception("下载流程异常 url=%s", outdir)
                 self.queue.put(("error", f"下载出错：{exc}"))
                 return
         self.queue.put(("done", f"完成：保存 {total_ok} 个文件 -> {outdir}",
@@ -1067,7 +1170,7 @@ class ResourceApp:
         if self.busy:
             return
         try:
-            from gallery_backup import GalleryDownload, is_available
+            from gallery_backup import is_available
         except ImportError:
             messagebox.showerror("备用下载不可用", "缺少 gallery_backup 模块")
             return
@@ -1118,7 +1221,6 @@ class ResourceApp:
         min_bytes = max(0, int(min_kb or 0)) * 1024
 
         def progress(done, total):
-            pct = int(done * 100 / total) if total else 100
             self.queue.put(("backup_probe", done, total, f"正在探测文件大小 {done}/{total} ..."))
 
         try:
@@ -1238,7 +1340,10 @@ class ResourceApp:
                         values=("\u2714" if checked else "", nm, _fmt_size(it["size"])))
 
         sel_set = {str(i) for i in range(min(20, len(items)))}  # 默认勾选前 20
-        total_b = lambda: sum(int(items[int(i)]["size"] or 0) for i in sel_set if i.isdigit() and int(i) < len(items))
+
+        def total_b():
+            return sum(int(items[int(i)]["size"] or 0)
+                       for i in sel_set if i.isdigit() and int(i) < len(items))
 
         def refresh():
             cd.config(text=f"已勾选 {len(sel_set)} 个（共 {_fmt_size(total_b())}）")
@@ -1265,7 +1370,6 @@ class ResourceApp:
             return "break"
 
         def toggle_all():
-            all_ids = [tree.index(x) for x in tree.get_children()]
             any_on = any(tree.item(i, "values")[0] == "\u2714" for i in tree.get_children())
             for i in tree.get_children():
                 tree.item(i, values=("\u2714" if not any_on else "", *tree.item(i, "values")[1:]))
@@ -1537,6 +1641,13 @@ class ResourceApp:
                 kind = msg[0]
                 if kind == "probe":
                     self.status_var.set(msg[1])
+                elif kind == "follow_tick":
+                    self.status_var.set(msg[1])
+                elif kind == "follow_done":
+                    _, ok_pages = msg
+                    self.status_var.set(
+                        f"定时跟进：本轮完成（成功 {ok_pages} 页），新资源已并入列表；"
+                        f"存档命中的旧资源已自动跳过")
                 elif kind == "res_item":
                     _, r = msg
                     self._add_resource_to_list(r)
@@ -1760,7 +1871,7 @@ class ResourceApp:
         )
         if box:
             try:
-                os.startfile(outdir)  # noqa: S606 - 本地路径打开
+                os.startfile(outdir)
             except OSError:
                 messagebox.showerror("提示", f"无法打开目录：{outdir}")
 
@@ -1963,7 +2074,8 @@ class ResourceApp:
                 st["zoom"] = st["pre_zoom"] = 1.0
                 win.after(0, fit)
             except Exception as exc:
-                win.after(0, lambda: info_lbl.config(text=f"加载失败：{exc}"))
+                err = str(exc)
+                win.after(0, lambda: info_lbl.config(text=f"加载失败：{err}"))
 
         def on_wheel(e):
             if not st["img"] or not (e.state & 0x0004):  # 仅 Ctrl+滚轮
@@ -2129,23 +2241,30 @@ def _pool_health_bg(probe_url: str):
 
 
 def main():
+    setup_logging()
+    log.info("应用启动 工作目录=%s", os.getcwd())
     threading.Thread(target=_pool_health_bg,
                      args=(config.PROXY_HEALTH_PROBE,), daemon=True).start()
     root = tk.Tk()
-    ResourceApp(root)
-    root.mainloop()
+    app = ResourceApp(root)
+    try:
+        root.mainloop()
+    finally:
+        log.info("应用退出 列表残留=%d", len(app.resources))
 
 
 class SearchDialog:
     """「关键词搜索」弹窗：关键词 → 平台搜索页 URL → 复用「发现资源」全流程。
 
     支持平台：抖音（搜索页走 /aweme/v1/web/search/ 接口，渲染+捕获提取）、
-    快手（/search/video 页，graphql 接口）。需要渲染模式（信息流懒加载由
-    适配器 scroll_max 自动滚动）。"""
+    快手（/search/video 页，graphql 接口）、B站（搜索页渲染+捕获提取，
+    详情页跟进时解析内嵌 __playinfo__ 拿 DASH 直链）。需要渲染模式
+    （信息流懒加载由适配器 scroll_max 自动滚动）。"""
 
     SEARCH_PLATFORMS = {
         "抖音": ("https://www.douyin.com/search/{kw}",),
         "快手": ("https://www.kuaishou.com/search/video?searchKey={kw}",),
+        "B站": ("https://search.bilibili.com/all?keyword={kw}",),
     }
 
     def __init__(self, app):
@@ -2197,11 +2316,125 @@ class SearchDialog:
         self.app.discover()
 
 
+class FollowDialog:
+    """「定时跟进」弹窗：管理关注列表 + 启动/停止后台调度。
+
+    调度在后台线程跑（不占 busy）：每轮逐个「渲染+捕获」发现关注页面的新
+    资源并入主列表（按 URL 去重）；配合全局下载存档，重复资源下载时自动跳过。
+    关闭弹窗不停止调度，需点「停止」或退出程序。
+    """
+
+    def __init__(self, app):
+        self.app = app
+        self._running = False
+        dlg = tk.Toplevel(app.root)
+        self.dlg = dlg
+        dlg.title("定时跟进")
+        dlg.geometry("540x400")
+        dlg.transient(app.root)
+        dlg.grab_set()
+        app._follow_dialog = self
+
+        pad = {"padx": 8, "pady": 4}
+        ttk.Label(dlg, text="关注列表：到点自动重新发现（存档跳过已下载，只列新增资源）。",
+                  justify=tk.LEFT).pack(anchor="w", **pad)
+        body = ttk.Frame(dlg)
+        body.pack(fill=tk.BOTH, expand=True, **pad)
+        self.lb = tk.Listbox(body, height=10)
+        self.lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb = ttk.Scrollbar(body, command=self.lb.yview)
+        sb.pack(side=tk.RIGHT, fill=tk.Y)
+        self.lb.config(yscrollcommand=sb.set)
+        self.lb.bind("<Delete>", lambda e: self._remove())
+
+        row = ttk.Frame(dlg)
+        row.pack(fill=tk.X, **pad)
+        self.url_var = tk.StringVar(value=app.url_var.get())
+        ttk.Entry(row, textvariable=self.url_var, width=50).pack(side=tk.LEFT)
+        ttk.Button(row, text="添加当前网址", command=self._add).pack(side=tk.LEFT, padx=4)
+        ttk.Button(row, text="删除选中", command=self._remove).pack(side=tk.LEFT)
+
+        ctrl = ttk.Frame(dlg)
+        ctrl.pack(fill=tk.X, padx=8, pady=4)
+        ttk.Label(ctrl, text="间隔(分钟):").pack(side=tk.LEFT)
+        self.interval_var = tk.StringVar(value=str(config.FOLLOW_INTERVAL_MIN))
+        ttk.Spinbox(ctrl, from_=5, to=1440, width=5,
+                    textvariable=self.interval_var).pack(side=tk.LEFT)
+        self.start_btn = ttk.Button(ctrl, text="开始定时", command=self._start)
+        self.start_btn.pack(side=tk.LEFT, padx=6)
+        self.once_btn = ttk.Button(ctrl, text="立即跑一轮", command=self._once)
+        self.once_btn.pack(side=tk.LEFT)
+        self.stop_btn = ttk.Button(ctrl, text="停止", command=self._stop,
+                                   state=tk.DISABLED)
+        self.stop_btn.pack(side=tk.LEFT, padx=6)
+        self.status_var = tk.StringVar(value="")
+        ttk.Label(dlg, textvariable=self.status_var, foreground="#666") \
+            .pack(anchor="w", **pad)
+
+        self._reload()
+        self.set_running(app.follow_active)
+
+    def _reload(self):
+        import follow_list
+        self.lb.delete(0, tk.END)
+        for it in follow_list.items():
+            name = f"{it.get('name')} · " if it.get("name") else ""
+            self.lb.insert(tk.END, f"{name}{it['url']}")
+
+    def _add(self):
+        import follow_list
+        url = self.url_var.get().strip() or self.app.url_var.get().strip()
+        if not url:
+            self.status_var.set("请输入网址")
+            return
+        if follow_list.add(url):
+            self._reload()
+            self.status_var.set(f"已加入关注：{url}")
+        else:
+            self.status_var.set("已在关注列表中")
+
+    def _remove(self):
+        import follow_list
+        sel = self.lb.curselection()
+        if not sel:
+            return
+        it = follow_list.items()[sel[0]]
+        follow_list.remove(it["url"])
+        self._reload()
+
+    def _start(self):
+        try:
+            interval = max(5, int(self.interval_var.get()))
+        except ValueError:
+            interval = config.FOLLOW_INTERVAL_MIN
+        self.app.start_follow(interval)
+        self.set_running(True)
+
+    def _once(self):
+        self.app.run_follow_once()
+        self.set_running(True)
+
+    def _stop(self):
+        self.app.stop_follow()
+        self.set_running(False)
+        self.status_var.set("已请求停止（当前页面完成后停止）")
+
+    def set_running(self, running: bool):
+        self._running = running
+        self.start_btn.config(state=tk.DISABLED if running else tk.NORMAL)
+        self.once_btn.config(state=tk.DISABLED if running else tk.NORMAL)
+        self.stop_btn.config(state=tk.NORMAL if running else tk.DISABLED)
+        self.status_var.set(
+            "调度运行中…（关闭弹窗不停止，点「停止」或退出程序结束）" if running else "已停止")
+
+
 class HotDialog:
     """「热点模式」弹窗：抓热搜榜 → 勾选条目 → 批量发现（渲染 + 接口捕获）。
 
-    目前支持 B 站热榜（x/web-interface/ranking/v2，无需签名；视频直链仍由
-    渲染捕获播放接口后经 bilibili 适配器提取，因此本流程自动强制渲染）。
+    - B站热榜：x/web-interface/ranking/v2 无需签名，列出 Top N 供勾选；
+      视频直链仍由渲染捕获播放接口后经 bilibili 适配器提取。
+    - 抖音热榜：热搜接口带签名（a_bogus），直接渲染热榜页 + 接口捕获，
+      由 douyin 适配器提取作品（无需选择，一键跑）。
 
     注意：仅限个人学习使用，勿商用侵权。
     """
@@ -2222,8 +2455,11 @@ class HotDialog:
         top.pack(fill=tk.X, **pad)
         ttk.Label(top, text="榜单:").pack(side=tk.LEFT)
         self.plat_var = tk.StringVar(value="B站热榜")
-        ttk.Combobox(top, textvariable=self.plat_var, width=10, state="readonly",
-                     values=["B站热榜"]).pack(side=tk.LEFT, padx=4)
+        self.plat_box = ttk.Combobox(top, textvariable=self.plat_var, width=10,
+                                     state="readonly",
+                                     values=["B站热榜", "抖音热榜"])
+        self.plat_box.pack(side=tk.LEFT, padx=4)
+        self.plat_box.bind("<<ComboboxSelected>>", lambda e: self._sync_ui())
         ttk.Label(top, text="条数:").pack(side=tk.LEFT)
         self.limit_var = tk.StringVar(value="30")
         ttk.Spinbox(top, from_=1, to=100, width=4,
@@ -2252,6 +2488,12 @@ class HotDialog:
         ttk.Button(btns, text="取消", command=dlg.destroy).pack(side=tk.RIGHT)
 
     def _fetch(self):
+        if self.plat_var.get() == "抖音热榜":
+            # 热搜接口带签名，浏览器渲染时自动计算；热榜页命中 douyin 适配器
+            # → 强制渲染 + 捕获 /aweme/v1/web/ 接口 → 自动提取作品
+            self.dlg.destroy()
+            self.app.discover_many(["https://www.douyin.com/hot"], "抖音热榜")
+            return
         from hot_search import bilibili_hot
         try:
             limit = min(max(int(self.limit_var.get() or 30), 1), 100)
@@ -2267,6 +2509,13 @@ class HotDialog:
                 self.dlg.after(0, lambda e=exc: self.status_var.set(f"抓取失败：{e}"))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _sync_ui(self):
+        """切换榜单：抖音热榜无需勾选，直接一键跑。"""
+        if self.plat_var.get() == "抖音热榜":
+            self.status_var.set("抖音热榜带签名，直接渲染热榜页 + 接口捕获提取，点「抓取」开始")
+        else:
+            self.status_var.set("")
 
     def _fill(self, items):
         self._items = items

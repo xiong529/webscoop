@@ -14,7 +14,6 @@ import subprocess
 import sys
 import threading
 
-import config
 
 # pexels 站内 v3 API 需该密钥头，且发送空的 X-Forwarded-* 头会触发 520，
 # gallery-dl 内置的 PexelsAPI 固定带空头导致失败，见 _PATCHED_PEXELS_API。

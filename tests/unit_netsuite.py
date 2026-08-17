@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources_reptile"))
 
-import config  # noqa: E402
+import config
 
 PASS = 0
 FAIL = 0
@@ -49,8 +49,8 @@ def expect_raises(name, fn):
 
 
 # ---- 1. 代理池 ----
-from resources_reptile.utils.proxy import ProxyPool, current_pool, pool as _pool_singleton  # noqa: E402
-import resources_reptile.utils.proxy as _pmod  # noqa: E402
+from resources_reptile.utils.proxy import ProxyPool
+import resources_reptile.utils.proxy as _pmod
 
 
 def _test_proxy_pool():
@@ -124,7 +124,7 @@ def _test_proxy_pool():
 _test_proxy_pool()
 
 # ---- 2. Cookie 规则 ----
-import resources_reptile.utils.cookies as ck  # noqa: E402
+import resources_reptile.utils.cookies as ck
 
 with tempfile.TemporaryDirectory() as td:
     _OLD_FILE = config.COOKIE_FILE
@@ -148,7 +148,7 @@ with tempfile.TemporaryDirectory() as td:
     config.COOKIE_FILE = _OLD_FILE
 
 # ---- 3. 平台适配器 ----
-from platform_adapters import (  # noqa: E402
+from platform_adapters import (
     PLATFORM_ADAPTERS,
     BilibiliAdapter,
     DouyinAdapter,
@@ -303,7 +303,7 @@ check("adapter: bilibili empty safe",
                              url="https://www.bilibili.com/video/BV1xx") == [])
 
 # ---- 4. mkv 畸形头防护 ----
-from discover_common import mkv_dimensions  # noqa: E402
+from discover_common import mkv_dimensions
 
 ok_mkv = (b"\x1aS\xb6g"  # EBML
           + b"\x18S\x80g" + b"\xff" * 8  # 段头（unknown size）
@@ -328,7 +328,7 @@ check("mkv: big file capped fast (<1s)", dt2 < 1.0)
 check("mkv: malformed w/h not found", res2 is None)
 
 # ---- 5. stats ----
-from stats import get_stats, bucket_for_reason  # noqa: E402
+from stats import get_stats, bucket_for_reason
 
 st = get_stats()
 st.reset()
@@ -389,7 +389,7 @@ with tempfile.TemporaryDirectory() as td:
     check("stats: json finish present", data["finish"] is not None)
 
 # ---- 6. cookie_capture（假浏览器注入，无需 Playwright） ----
-from cookie_capture import CookieCaptureSession  # noqa: E402
+from cookie_capture import CookieCaptureSession
 
 class _FakeCtx:
     def cookies(self):

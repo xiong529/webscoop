@@ -19,6 +19,7 @@ SUITES = {
     "unit_format_selector": "格式选择器:spec 解析 / 条件过滤 / best-worst / URL 择优",
     "unit_download_archive": "下载存档/死链表:URL 归一 / 记录-命中闭环 / 持久化",
     "unit_hotsearch": "热搜榜:B站热榜解析 / 接口错误 / 截断",
+    "unit_follow_list": "定时跟进:关注列表增删 / 去重 / 持久化",
     "unit_features": "新功能:去重 / MIME / robots / 重试 / failures.json / 渲染冒烟",
     "unit_netsuite": "网络层:代理池 / Cookie 注入 / 平台适配器 / mkv 上限 / stats",
     "unit_hls": "HLS m3u8 分片下载:变体选择 / 并发合并 / BYTERANGE / 失败路径",

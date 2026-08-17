@@ -74,7 +74,6 @@ srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
 port = srv.server_address[1]
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 
-import scrapy
 from scrapy.crawler import CrawlerProcess
 
 td = tempfile.mkdtemp(prefix="scrapystats_")

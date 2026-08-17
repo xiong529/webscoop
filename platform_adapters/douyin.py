@@ -73,7 +73,7 @@ class DouyinAdapter(PlatformAdapter):
         imgs = aweme.get("images") or []
         for img in imgs:
             lst = img.get("url_list") or []
-            for i, u in enumerate(lst):
+            for _i, u in enumerate(lst):
                 if isinstance(u, str) and u.startswith("http"):
                     out.append({
                         "url": u,

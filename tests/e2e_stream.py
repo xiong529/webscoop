@@ -13,7 +13,6 @@ import tempfile
 import threading
 import time
 
-import requests
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -23,9 +22,9 @@ _TMP_ARCH = tempfile.mkdtemp(prefix="ws_e2e_arch_")
 os.environ["RESOURCES_ARCHIVE_FILE"] = os.path.join(_TMP_ARCH, "archive.json")
 os.environ["RESOURCES_DEAD_FILE"] = os.path.join(_TMP_ARCH, "dead.json")
 
-import config  # noqa
-from gui_crawler import Discoverer  # noqa
-from gui_fetch import FetchSession  # noqa
+import config
+from gui_crawler import Discoverer
+from gui_fetch import FetchSession
 
 config.PROXY_ENABLED = False
 config.DEFAULT_PROXY = ""

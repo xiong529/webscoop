@@ -13,7 +13,6 @@ import json
 import os
 import threading
 import time
-from urllib.parse import urlparse
 
 from download_archive import canonical_url
 

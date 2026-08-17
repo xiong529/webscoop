@@ -5,7 +5,6 @@
 import http.server
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -76,7 +75,7 @@ urls = [u for it in items for u in it.get("file_urls", [])]
 print("file_urls:", urls)
 
 found = []
-for base, dirs, files in os.walk(STORE):
+for base, _dirs, files in os.walk(STORE):
     for fn in files:
         p = os.path.join(base, fn)
         found.append(os.path.relpath(p, STORE))

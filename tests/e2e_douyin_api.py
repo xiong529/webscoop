@@ -24,14 +24,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "resources_reptile"))
 
-import config  # noqa: E402
+import config
 
 config.PROXY_ENABLED = False
 config.DEFAULT_PROXY = ""
 
-import gui_crawler  # noqa: E402
-import platform_adapters as pa  # noqa: E402
-import renderer  # noqa: E402
+import gui_crawler
+import platform_adapters as pa
+import renderer
 
 PASS = 0
 FAIL = 0

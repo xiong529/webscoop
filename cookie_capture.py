@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import os
 import threading
 
 from resources_reptile.utils.cookies import load_cookie
@@ -171,7 +170,9 @@ class CookieCaptureSession:
                 break
         if not hd or "=" not in hd:
             return 0, "粘贴内容为空或不是 Cookie 格式（应为 name=value; name2=value2）"
-        host = (host or "").strip().lower().lstrip("www.")
+        host = (host or "").strip().lower()
+        if host.startswith("www."):
+            host = host[4:]
         if not host:
             return 0, "缺少域名（先填目标 URL）"
         # 子域写根域行，注入时按注册域家族归一

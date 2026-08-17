@@ -17,7 +17,8 @@ import re
 from urllib.parse import parse_qs, unquote, urlencode, urlparse
 
 import config
-from resources_reptile.pipelines import EXTENSION_CATEGORY, classify_url
+from resources_reptile.pipelines import (  # noqa: F401  再导出给 gui_crawler 兼容导入
+    EXTENSION_CATEGORY, classify_url)
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -677,7 +678,56 @@ def extract_media_from_html(html: str, page_url: str = "") -> dict:
             if best:
                 image_url = highres_url(best)
 
+    if not video_url:
+        # B 站等：页面内嵌 window.__playinfo__（HTML 里带 DASH 流 JSON），
+        # 静态抓取即可拿到直链，无需等 JS。
+        play_url = playinfo_video_url(html)
+        if play_url:
+            video_url = play_url
+
     return {"title": title, "video_url": video_url, "image_url": image_url}
+
+
+_PLAYINFO_RE = re.compile(
+    r"window\.__playinfo__\s*=\s*(\{.*?\})\s*;?\s*</script>", re.DOTALL)
+
+
+def playinfo_video_url(html: str) -> str:
+    """从页面内嵌 __playinfo__ JSON 提取视频直链（B 站 DASH 流）。
+
+    返回：dash.video 里按格式选择器（默认 best[height<=1080]）挑一条
+    baseUrl；无 dash 时取 durl[0].url；都没有返回空串。
+    """
+    m = _PLAYINFO_RE.search(html or "")
+    if not m:
+        return ""
+    try:
+        import json
+        data = json.loads(m.group(1))
+    except ValueError:
+        return ""
+    d = (data or {}).get("data") or {}
+    videos = (d.get("dash") or {}).get("video") or []
+    items = [
+        v for v in videos
+        if isinstance(v, dict)
+        and isinstance(v.get("baseUrl") or v.get("base_url"), str)
+    ]
+    if items:
+        from format_selector import Format, select_formats
+        fmts = [Format(url=v["baseUrl"], height=v.get("height") or 0,
+                       width=v.get("width") or 0, size=v.get("bandwidth") or 0)
+                for v in items]
+        picked = (select_formats(fmts, "best[height<=1080]")
+                  or select_formats(fmts, "best"))
+        if picked:
+            return picked.url
+    durls = d.get("durl") or []
+    for dv in durls:
+        if isinstance(dv, dict) and isinstance(dv.get("url"), str) \
+                and dv["url"].startswith("http"):
+            return dv["url"]
+    return ""
 
 
 # ================================================================
@@ -687,4 +737,4 @@ def extract_media_from_html(html: str, page_url: str = "") -> dict:
 # 兼容历史导入 `from discover_common import extract_media_from_api`。
 # 新增平台改 platform_adapters，无需动此处。
 
-from platform_adapters import extract_media_from_api  # noqa: E402,F401
+from platform_adapters import extract_media_from_api  # noqa: F401

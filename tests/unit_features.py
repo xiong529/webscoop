@@ -8,19 +8,19 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import config  # noqa
+import config
 config.DEFAULT_PROXY = ""  # 测试不依赖代理
 
-from discover_common import is_download_endpoint  # noqa
-from gui_crawler import (  # noqa
+from discover_common import is_download_endpoint
+from gui_crawler import (
     _code_retryable,
     _exc_status,
     _retry_after_seconds,
     load_failures,
     save_failures,
 )
-from resources_reptile.dupefilters import NormalizedRFPDupeFilter, strip_tracking_params  # noqa
-from resources_reptile.pipelines import classify_url, ct_to_ext  # noqa
+from resources_reptile.dupefilters import NormalizedRFPDupeFilter, strip_tracking_params
+from resources_reptile.pipelines import classify_url, ct_to_ext
 
 PASS = 0
 FAIL = 0
@@ -64,7 +64,7 @@ urls = [
     "https://example.com/list?page=3",
 ]
 f = NormalizedRFPDupeFilter(strip_params=("utm_", "fbclid", "gclid"))
-from scrapy.http import Request  # noqa
+from scrapy.http import Request
 seen = set()
 for u in urls:
     seen.add(f.request_fingerprint(Request(u)))
@@ -85,7 +85,7 @@ check("classify no-ext no ct", classify_url("https://x.com/dl"), "others")
 check("classify pdf ct", classify_url("https://x.com/export?id=1", "application/pdf"), "docs")
 
 # ---- 3. robots 策略 ----
-from resources_reptile.middlewares import RobotsPolicyMiddleware  # noqa
+from resources_reptile.middlewares import RobotsPolicyMiddleware
 m = RobotsPolicyMiddleware()
 req = Request("https://pexels.com/zh-cn/search/videos/x/")
 m.process_request(req)

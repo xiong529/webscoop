@@ -11,7 +11,6 @@
 import http.server
 import os
 import shutil
-import socket
 import sys
 import tempfile
 import threading
@@ -22,14 +21,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "resources_reptile"))
 
-import config  # noqa: E402
+import config
 
 config.PROXY_ENABLED = False
 config.DEFAULT_PROXY = ""
 
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 
-import hls_downloader  # noqa: E402
+import hls_downloader
 
 PASS = 0
 FAIL = 0

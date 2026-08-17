@@ -12,7 +12,6 @@
 """
 import http.server
 import os
-import shutil
 import sys
 import tempfile
 import threading
@@ -100,7 +99,7 @@ def res(url: str) -> Resource:
 
 def find(*names):
     found = set()
-    for root, _, files in os.walk(OUTDIR):
+    for _root, _, files in os.walk(OUTDIR):
         for fn in files:
             if fn in names:
                 found.add(fn)

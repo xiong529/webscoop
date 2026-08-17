@@ -6,7 +6,6 @@ GUI 与 Scrapy 均可从这里读取，避免各模块重复维护默认值。
 from __future__ import annotations
 
 import os
-import sys
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -29,6 +28,14 @@ PROXY_HEALTH_PROBE = os.environ.get(
 # 永久失败 URL，命中直接跳过。两个文件都在项目根目录（可用环境变量换位置）
 ARCHIVE_FILE = os.environ.get("RESOURCES_ARCHIVE_FILE", "download_archive.json")
 DEAD_FILE = os.environ.get("RESOURCES_DEAD_FILE", "dead_urls.json")
+# 定时跟进：关注列表文件 + 默认轮询间隔（分钟）。
+# 配合全局下载存档使用：每次只发现并下载新增作品（存量被存档直接跳过）
+FOLLOW_FILE = os.environ.get("RESOURCES_FOLLOW_FILE", "follow_list.json")
+FOLLOW_INTERVAL_MIN = int(os.environ.get("RESOURCES_FOLLOW_INTERVAL_MIN", "30"))
+# 日志：滚动文件（logs/app.log，5MB×3），级别可用环境变量覆盖
+LOG_FILE = os.environ.get("RESOURCES_LOG_FILE", os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "logs", "app.log"))
+LOG_LEVEL = os.environ.get("RESOURCES_LOG_LEVEL", "INFO")
 
 # ---------------- 反爬与请求 ----------------
 # TLS 指纹模拟使用的浏览器（经 Scrapling/curl_cffi 支持）

@@ -109,7 +109,9 @@ def match_rule(rules: dict[str, str], host: str | None) -> str | None:
     短链（v.douyin.com/xxx）与真实接口域（www.douyin.com）往往不同子域，
     家族匹配保证登录态能送达真实接口所在域。
     """
-    h = (host or "").strip().lower().lstrip("www.")
+    h = (host or "").strip().lower()
+    if h.startswith("www."):
+        h = h[4:]
     if not h:
         return None
     for dom in rules:

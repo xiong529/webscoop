@@ -45,8 +45,8 @@ from discover_common import (  # noqa: F401  兼容外部 `from gui_crawler impo
     sanitize_name,
     video_highres_url,
 )
-from gui_fetch import FetchSession, FetchResponse
-from renderer import close_renderer, render_page
+from gui_fetch import FetchSession
+from renderer import render_page
 from resources_reptile.utils.user_agents import random_user_agent
 
 # 旧名兼容（本模块内部与历史导入仍引用 _looks_like_image）
@@ -65,8 +65,8 @@ IMAGE_HINTS = ("/image", "/images", ".jpg", ".jpeg", ".png", ".gif", ".webp")
 # 「页面空壳 + 签名接口」的站（抖音/快手/小红书等）：HTML 里没有直链，
 # 真实数据全在浏览器内 JS 带签名调用的接口里。适配器注册表见
 # platform_adapters；命中适配器即启用「渲染 + 捕获接口 + 提取」路径。
-from platform_adapters import api_filters_for as _adapter_api_filters
 from platform_adapters import page_adapter as _page_adapter
+from platform_adapters import api_filters_for as _adapter_api_filters  # noqa: F401  测试 patch 入口
 from stats import get_stats as _get_stats
 
 DISPLAY_KIND = {
@@ -325,7 +325,6 @@ class Discoverer:
             html, apis = render_page_api(url, api_filters=filters, proxy=proxy,
                                          scroll_max=scroll)
             return html, apis
-        from renderer import render_page
         html = render_page(url, proxy=proxy)
         return html, []
 
@@ -745,7 +744,7 @@ class Discoverer:
         pool = ThreadPoolExecutor(max_workers=PROBE_WORKERS)
         try:
             futs = [pool.submit(extract, u) for u in detail_links]
-            for fut in as_completed(futs):
+            for _fut in as_completed(futs):
                 if self.stopped:
                     for f in futs:
                         f.cancel()
@@ -1200,7 +1199,7 @@ class Downloader:
                     try:
                         size = 0
                         with open(tmp, "wb") as f:
-                            for chunk, total in self.session.iter_content(
+                            for chunk, _size in self.session.iter_content(
                                     dl_url, headers=headers, chunk_size=65536):
                                 if chunk:
                                     f.write(chunk)

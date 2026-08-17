@@ -1,0 +1,19 @@
+target-version = "py310"
+
+[lint]
+# 面向「真 bug / 死代码」，不启用风格类规则，避免与既有代码风格冲突
+select = [
+    "E4", "E7", "E9",   # 语法/缩进/括号等客观错误
+    "F",                # 未定义名/未使用导入/未使用变量/重复定义
+    "B0",               # flake8-bugbear 客观缺陷
+    "RUF100",           # 失效的 noqa
+]
+
+ignore = [
+    "B008",  # 函数参数中的可调用默认值（scrapy middleware 模式）
+    "S101",  # assert 在测试中属正常用法
+    "E402",  # config/env 先于 import 的既有写法（tests 内 sys.path 前置）
+]
+
+# 说明：S110（try-except-pass）不启用——全库 47 处均为刻意「清理资源/
+# 可选特性探测/统计更新兜底」，吞错不改行为，逐处改写的噪声大于价值。

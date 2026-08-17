@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 import threading
 import time
@@ -162,7 +161,6 @@ class VLCEmbeddedPlayer:
         self._duration = 0.0
         self._polling = False
         # 在 host 上开一个子 Frame 作为 VLC 渲染目标
-        import tkinter as tk
         self._wrapper = None
         if hasattr(host_widget, "winfo_id"):
             self._wrapper = host_widget
@@ -170,7 +168,6 @@ class VLCEmbeddedPlayer:
         self._bind_after()
 
     def _bind_after(self):
-        import tkinter as tk
         # host 可能是 ttk.Frame，拿它的内部 tk.Frame
         frame = self._wrapper
         if frame is not None:

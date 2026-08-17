@@ -10,12 +10,11 @@
 import random
 import time
 
-import scrapy
 from twisted.internet import reactor
 from twisted.internet.task import deferLater
 
 import config
-from .utils.proxy import current_pool, get_random_proxy
+from .utils.proxy import current_pool
 from .utils.user_agents import random_user_agent
 
 

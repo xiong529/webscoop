@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from format_selector import Format, pick_video_url, select_formats  # noqa: E402
+from format_selector import Format, pick_video_url, select_formats
 
 passed = 0
 

@@ -10,7 +10,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import llm_rules  # noqa
+import llm_rules
 
 PASS = 0
 FAIL = 0
@@ -137,7 +137,7 @@ data = json.load(open(tmp, encoding="utf-8"))
 check("rule persisted", len(data["rules"]), 1)
 
 # 复用临时规则文件,验证 highres_url 能应用新规则
-import discover_common  # noqa
+import discover_common
 discover_common.RULES_FILE = tmp
 discover_common.reload_rules()
 check("new regex_sub rule works",
@@ -150,7 +150,7 @@ check("non-matching site untouched",
 os.remove(tmp)
 
 # --- 配置存取 roundtrip（临时文件） ---
-import config  # noqa
+import config
 import tempfile
 _cfg_tmp = os.path.join(tempfile.gettempdir(), "unit_llm_cfg.json")
 _old_cfg = config.LLM_CONFIG_FILE

@@ -27,3 +27,8 @@ test_out*.txt
 test_summary.txt
 *.ts
 install.log
+
+# 运行时：日志、关注列表、ruff 缓存
+logs/
+follow_list.json
+.ruff_cache/

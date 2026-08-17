@@ -16,8 +16,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "resources_reptile"))
 
-import config  # noqa: E402
-import gui_fetch  # noqa: E402
+import config
+import gui_fetch
 
 PASS = 0
 FAIL = 0

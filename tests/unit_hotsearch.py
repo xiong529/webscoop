@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from hot_search import bilibili_hot  # noqa: E402
+from hot_search import bilibili_hot
 
 passed = 0
 

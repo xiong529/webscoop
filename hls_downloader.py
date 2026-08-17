@@ -74,7 +74,7 @@ def _fetch(url: str, referer: str = "", timeout: int = 20) -> bytes:
             return data
         except _HlsError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             last = exc
     raise _HlsError(f"拉取失败: {last}")
 
@@ -266,7 +266,7 @@ def download_hls(url: str, dest_dir: str, out_name: str = "stream",
                     with open(tmp, "wb") as f:
                         f.write(data)
                     return
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     last = exc
             with lock:
                 if not fail_reason:
@@ -274,7 +274,7 @@ def download_hls(url: str, dest_dir: str, out_name: str = "stream",
 
         with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
             futs = [pool.submit(work, i, s) for i, s in enumerate(segs)]
-            for fut in as_completed(futs):
+            for _fut in as_completed(futs):
                 if fail_reason:
                     for f in futs:
                         f.cancel()

@@ -163,8 +163,6 @@ async def _render_async(browser, url, timeout, proxy, user_agent,
     返回 [(HTML, [api_json_dict, ...])] 形式以便统一调度；api_filters 为空
     时与旧 render_page 行为一致（不捕获接口）。
     """
-    from urllib.parse import urlparse as _up
-    from resources_reptile.utils.cookies import load_cookie as _load_cookie
     # 登录态注入：优先按域名作用域 add_cookies（跨域子资源不泄漏 Cookie 头）
     cookie_list, extra_headers = _cookie_ctx_for(url)
     context = await browser.new_context(
@@ -374,7 +372,7 @@ def close_renderer() -> None:
     with _lock:
         if _loop is None:
             return
-        loop, thread = _loop, _loop_thread
+        loop = _loop
 
         async def _shutdown():
             global _browser, _playwright

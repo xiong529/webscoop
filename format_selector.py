@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 _SPEC_RE = re.compile(r"^(best|worst)(?:\[([^\]]+)\])?$")
 _COND_RE = re.compile(r"^(\w+)(<=|>=|==|<|>)(-?\d+)$")
@@ -49,7 +49,7 @@ class Format:
         if m:
             width, height = int(m.group(1)), int(m.group(2))
         label = ""
-        for variant, order in _VARIANT_ORDER.items():
+        for variant, _order in _VARIANT_ORDER.items():
             if variant in name:
                 label = variant
                 break

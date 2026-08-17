@@ -12,8 +12,8 @@ os.environ["RESOURCES_DEAD_FILE"] = os.path.join(_TMP, "dead.json")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from download_archive import canonical_url, clear as arch_clear, contains, record, size  # noqa: E402
-from dead_list import DEAD_STATUS, clear as dead_clear, is_dead, mark_dead  # noqa: E402
+from download_archive import canonical_url, clear as arch_clear, contains, record, size
+from dead_list import DEAD_STATUS, clear as dead_clear, is_dead, mark_dead
 
 arch_clear()
 dead_clear()

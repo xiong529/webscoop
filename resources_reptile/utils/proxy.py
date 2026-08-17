@@ -214,7 +214,6 @@ class ProxyPool:
             if not ok:
                 self.revoke(p, "health-fail", force=True)
 
-        threads = []
         with ThreadPoolExecutor(max_workers=concurrency) as ex:
             list(ex.map(probe, targets))
         return results
