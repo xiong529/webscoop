@@ -118,7 +118,12 @@ class ResourceFilesPipeline(FilesPipeline):
         adapter = ItemAdapter(item)
         url = adapter.get("url", "")
         names = adapter.get("file_names", [])
-        for index, file_url in enumerate(adapter.get("file_urls", [])):  
+        # 全局下载存档/死链表：命中直接跳过（与 GUI Downloader 同语义）
+        from download_archive import contains as _arch_contains
+        from dead_list import is_dead as _is_dead
+        for index, file_url in enumerate(adapter.get("file_urls", [])):
+            if _arch_contains(file_url) or _is_dead(file_url):
+                continue
             meta = {"referer": url}
             if names and index < len(names) and names[index]:
                 meta["custom_name"] = names[index]
@@ -130,10 +135,12 @@ class ResourceFilesPipeline(FilesPipeline):
         return results
 
     async def media_downloaded(self, response, request, info, *, item=None):
-        """下载成功：计入 downloaded（字节数）与已落盘目录的分类。"""
+        """下载成功：计入 downloaded（字节数）与已落盘目录的分类，并记入全局存档。"""
         file_info = await super().media_downloaded(response, request, info,
                                                    item=item)
         try:
+            from download_archive import record as _arch_record
+            _arch_record(request.url, len(response.body) if response.body else 0)
             path = file_info.get("path", "")
             category = os.path.dirname(path).split(os.sep)[0] or "others"
             st = _stats()
@@ -146,10 +153,18 @@ class ResourceFilesPipeline(FilesPipeline):
     def media_failed(self, failure, request, info):
         """下载失败：计入 failed（原因为错误消息，站点取请求 hostname）。
 
+        404/410/451（资源确实不存在）额外记入死链表，后续爬取直接跳过。
+
         与 GUI Downloader 共用 stats 单例，CLI Scrapy 跑完也能写 stats.json
         （落盘在 spider.closed 统一执行，见 resource_spider.py）。
         """
         try:
+            from dead_list import DEAD_STATUS as _DEAD_STATUS
+            st_code = getattr(getattr(failure.value, "response", None),
+                              "status", None) or 0
+            if st_code in _DEAD_STATUS:
+                from dead_list import mark_dead as _mark_dead
+                _mark_dead(request.url, st_code)
             reason = failure.getErrorMessage() or type(failure.value).__name__
             st = _stats()
             st.add_failed(

@@ -15,6 +15,9 @@ third_party/
 failures.json
 pexels_api_key.txt
 llm_config.json
+# 运行时持久化（yt-dlp 语义）：全局下载存档 / 死链列表
+download_archive.json
+dead_urls.json
 
 # 隐私/本机配置：登录凭证、本机代理、私人评审记录、测试垃圾输出
 cookies.txt

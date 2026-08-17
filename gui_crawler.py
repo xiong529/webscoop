@@ -1049,10 +1049,21 @@ class Downloader:
         # 断点续载：已有文件直接跳过
         if config.RESUME_EXISTING and os.path.exists(dest) and os.path.getsize(dest) > 0:
             return r.name, True, ""
+        # 全局下载存档（yt-dlp download-archive 语义）：任一候选地址已成功下载过
+        # 即跳过，即使本地文件已被清理——定时跟进博主时只下新增作品。
+        from download_archive import contains as _arch_contains
+        if _arch_contains(r.url) or _arch_contains(dl_url) or _arch_contains(
+                getattr(r, "raw_url", "") or ""):
+            return r.name, True, ""
+        # 死链列表（404/410/451 永久失败）：直接跳过，不再重试
+        from dead_list import is_dead as _is_dead
+        if _is_dead(r.url) or _is_dead(dl_url):
+            return r.name, True, ""
         tmp = dest + ".part"
         retries = int(config.DOWNLOAD_RETRY_TIMES)
         backoff = float(config.DOWNLOAD_RETRY_BACKOFF)
         last_reason: str | None = None
+        last_status = 0
         retried = 0
         # 1 次正常尝试 + DOWNLOAD_RETRY_TIMES 次分桶退避重试：
         # - 429：按 Retry-After（未给出则双倍指数），上限 60s
@@ -1063,11 +1074,19 @@ class Downloader:
             try:
                 self._download_attempt(r, dl_url, headers, tmp, dest)
                 _st = _get_stats()
-                _st.add_downloaded(1, os.path.getsize(dest) if os.path.exists(dest) else 0)
+                size = os.path.getsize(dest) if os.path.exists(dest) else 0
+                _st.add_downloaded(1, size)
                 _st.add_category(r.kind, 1)
+                # 全局下载存档：成功即记录（原链接 + 高清/回退地址都记，防止
+                # 下次爬到不同变体地址时重复下载）
+                from download_archive import record as _arch_record
+                for u in {r.url, dl_url, getattr(r, "raw_url", "") or ""}:
+                    if u:
+                        _arch_record(u, size)
                 return r.name, True, ""
             except _DownloadError as exc:
                 last_reason = exc.reason
+                last_status = exc.status
                 if not exc.retryable or attempt >= retries:
                     break
                 retried = attempt + 1
@@ -1084,6 +1103,12 @@ class Downloader:
                 os.remove(tmp)
         except OSError:
             pass
+        # 404/410/451 永久失败 → 记入死链表，下次直接跳过
+        from dead_list import DEAD_STATUS as _DEAD_STATUS, mark_dead as _mark_dead
+        if last_status in _DEAD_STATUS:
+            for u in {r.url, dl_url, getattr(r, "raw_url", "") or ""}:
+                if u:
+                    _mark_dead(u, last_status)
         reason = last_reason or "未知下载错误"
         if retried:
             reason = f"{reason}（重试 {retried} 次后仍失败）"

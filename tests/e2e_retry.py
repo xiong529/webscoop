@@ -20,6 +20,11 @@ import threading
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+# 下载存档/死链表隔离到临时目录，避免污染仓库根目录
+_TMP_ARCH = tempfile.mkdtemp(prefix="ws_e2e_arch_")
+os.environ["RESOURCES_ARCHIVE_FILE"] = os.path.join(_TMP_ARCH, "archive.json")
+os.environ["RESOURCES_DEAD_FILE"] = os.path.join(_TMP_ARCH, "dead.json")
+
 import config
 config.DOWNLOAD_RETRY_TIMES = 3
 config.DOWNLOAD_RETRY_BACKOFF = 0.1

@@ -512,6 +512,7 @@ class ResourceApp:
         ttk.Button(tools, text="复制链接", command=self.copy_links).pack(side=tk.LEFT, padx=2)
         ttk.Button(tools, text="打开页面", command=self.open_page).pack(side=tk.LEFT, padx=2)
         ttk.Button(tools, text="关键词搜索…", command=self.open_search_dialog).pack(side=tk.LEFT, padx=2)
+        ttk.Button(tools, text="热点模式…", command=self.open_hot_dialog).pack(side=tk.LEFT, padx=2)
         ttk.Button(tools, text="去重", command=self.dedupe).pack(side=tk.LEFT, padx=2)
         ttk.Button(tools, text="重试失败", command=self.retry_failed).pack(side=tk.LEFT, padx=2)
         self.api_btn = ttk.Button(tools, text="API 抓取…", command=self.open_api_dialog)
@@ -663,6 +664,18 @@ class ResourceApp:
             return
         SearchDialog(self)
 
+    def open_hot_dialog(self):
+        """打开「热点模式」弹窗：热搜榜 → 勾选 → 批量发现（渲染+接口捕获）。"""
+        dlg = getattr(self, "_hot_dialog", None)
+        if dlg is not None and dlg.winfo_exists():
+            dlg.lift()
+            dlg.focus_force()
+            return
+        if self.busy:
+            messagebox.showinfo("提示", "当前有任务进行中，请先完成或停止")
+            return
+        HotDialog(self)
+
     def _api_dialog_busy(self, busy: bool):
         """联动 API 弹窗的忙状态（发现/API 抓取互斥期间的按钮切换）。"""
         dlg = getattr(self, "_api_dialog", None)
@@ -787,6 +800,56 @@ class ResourceApp:
     def _add_resource_live(self, r: Resource):
         """探测完成一个就立即上屏一个（worker 线程调用，经队列回流主线程）。"""
         self.queue.put(("res_item", r))
+
+    def discover_many(self, urls: list[str], label: str):
+        """热点模式：批量发现多个页面（逐个渲染+接口捕获，结果聚合进主列表）。
+
+        与 discover() 相同的前置/收尾约定（清空列表、busy 互斥、按钮联动）。
+        """
+        if self.busy or not urls:
+            return
+        self.busy = True
+        self.discover_btn.config(state=tk.DISABLED)
+        self.refresh_btn.config(state=tk.DISABLED)
+        self.download_btn.config(state=tk.DISABLED)
+        self.api_btn.config(state=tk.DISABLED)
+        self.stop_btn.config(state=tk.NORMAL)
+        self._stop_event.clear()
+        self._api_dialog_busy(True)
+        self._clear_list()
+        self.resources.clear()
+        self.thumb_cache.clear()
+        self.session = self._make_session()
+        self.status_var.set(f"热点模式 {label}：正在发现 {len(urls)} 个页面…")
+        self.progress.config(mode="indeterminate")
+        self.progress.start(12)
+        threading.Thread(target=self._hot_worker, args=(urls, label),
+                         daemon=True).start()
+
+    def _hot_worker(self, urls: list[str], label: str):
+        try:
+            from gui_crawler import Discoverer
+            all_res: list = []
+            ok = 0
+            for i, u in enumerate(urls, 1):
+                if self._stop_event.is_set():
+                    break
+                self.queue.put(("probe", f"[{label}] {i}/{len(urls)} 正在发现 "
+                                        f"{u[:60]}…"))
+                d = Discoverer(session=self.session, render_mode=True,
+                               stop_event=self._stop_event,
+                               on_resource=self._add_resource_live)
+                try:
+                    resources, _title = d.discover(u)
+                    ok += 1
+                    all_res.extend(resources)
+                except Exception as exc:
+                    self.queue.put(("probe", f"[{label}] {u[:60]} 失败: {exc}"))
+            stopped = bool(self._stop_event.is_set())
+            self.queue.put(("discovered", all_res,
+                            f"{label}（成功 {ok} 页）", 0, stopped))
+        except Exception as exc:
+            self.queue.put(("discover_failed", str(exc), label))
 
     def _backup_fallback_worker(self, url: str, proxy: str | None = None,
                                 merge_only: bool = False):
@@ -2132,6 +2195,111 @@ class SearchDialog:
         self.status_var.set(f"构造搜索页: {url}")
         self.dlg.destroy()
         self.app.discover()
+
+
+class HotDialog:
+    """「热点模式」弹窗：抓热搜榜 → 勾选条目 → 批量发现（渲染 + 接口捕获）。
+
+    目前支持 B 站热榜（x/web-interface/ranking/v2，无需签名；视频直链仍由
+    渲染捕获播放接口后经 bilibili 适配器提取，因此本流程自动强制渲染）。
+
+    注意：仅限个人学习使用，勿商用侵权。
+    """
+
+    def __init__(self, app):
+        self.app = app
+        self._items: list[dict] = []
+        dlg = tk.Toplevel(app.root)
+        self.dlg = dlg
+        dlg.title("热点模式（B站热榜）")
+        dlg.geometry("600x430")
+        dlg.transient(app.root)
+        dlg.grab_set()
+        app._hot_dialog = self
+
+        pad = {"padx": 8, "pady": 4}
+        top = ttk.Frame(dlg)
+        top.pack(fill=tk.X, **pad)
+        ttk.Label(top, text="榜单:").pack(side=tk.LEFT)
+        self.plat_var = tk.StringVar(value="B站热榜")
+        ttk.Combobox(top, textvariable=self.plat_var, width=10, state="readonly",
+                     values=["B站热榜"]).pack(side=tk.LEFT, padx=4)
+        ttk.Label(top, text="条数:").pack(side=tk.LEFT)
+        self.limit_var = tk.StringVar(value="30")
+        ttk.Spinbox(top, from_=1, to=100, width=4,
+                    textvariable=self.limit_var).pack(side=tk.LEFT)
+        ttk.Button(top, text="抓取榜单", command=self._fetch).pack(side=tk.LEFT, padx=8)
+        self.status_var = tk.StringVar(value="")
+        ttk.Label(dlg, textvariable=self.status_var, foreground="#666") \
+            .pack(anchor="w", **pad)
+
+        body = ttk.Frame(dlg)
+        body.pack(fill=tk.BOTH, expand=True, **pad)
+        self.lb = tk.Listbox(body, selectmode=tk.EXTENDED, height=14)
+        self.lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb = ttk.Scrollbar(body, command=self.lb.yview)
+        sb.pack(side=tk.RIGHT, fill=tk.Y)
+        self.lb.config(yscrollcommand=sb.set)
+        self.lb.bind("<Double-Button-1>", lambda e: self._go())
+
+        btns = ttk.Frame(dlg)
+        btns.pack(fill=tk.X, padx=8, pady=6)
+        self.go_btn = ttk.Button(btns, text="发现勾选（渲染+捕获）",
+                                 command=self._go, state=tk.DISABLED)
+        self.go_btn.pack(side=tk.LEFT)
+        ttk.Button(btns, text="全选", command=self._select_all).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btns, text="抓全部", command=self._go_all).pack(side=tk.LEFT)
+        ttk.Button(btns, text="取消", command=dlg.destroy).pack(side=tk.RIGHT)
+
+    def _fetch(self):
+        from hot_search import bilibili_hot
+        try:
+            limit = min(max(int(self.limit_var.get() or 30), 1), 100)
+        except ValueError:
+            limit = 30
+        self.status_var.set("正在抓取 B 站热榜…")
+
+        def worker():
+            try:
+                items = bilibili_hot(limit=limit)
+                self.dlg.after(0, lambda: self._fill(items))
+            except Exception as exc:
+                self.dlg.after(0, lambda e=exc: self.status_var.set(f"抓取失败：{e}"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _fill(self, items):
+        self._items = items
+        self.lb.delete(0, tk.END)
+        for it in items:
+            view = f"{it['view']:,}"
+            line = f"{it['rank']:>3}. {it['title'][:40]}  ·  {view}播放 · {it['author'][:10]}"
+            self.lb.insert(tk.END, line)
+        self.go_btn.config(state=tk.NORMAL if items else tk.DISABLED)
+        self.status_var.set(f"热榜 {len(items)} 条；勾选后点「发现勾选」（自动强制渲染）")
+
+    def _select_all(self):
+        self.lb.selection_set(0, tk.END)
+
+    def _selected(self) -> list[dict]:
+        return [self._items[i] for i in self.lb.curselection()]
+
+    def _go(self):
+        sel = self._selected()
+        if not sel:
+            self.status_var.set("请先勾选要抓的条目")
+            return
+        urls = [it["url"] for it in sel]
+        label = f"{self.plat_var.get()}·{len(urls)}条"
+        self.dlg.destroy()
+        self.app.discover_many(urls, label)
+
+    def _go_all(self):
+        if not self._items:
+            self.status_var.set("请先「抓取榜单」")
+            return
+        self._select_all()
+        self._go()
 
 
 class CookieDialog:

@@ -24,6 +24,11 @@ PROXY_ENABLED = os.environ.get("RESOURCES_PROXY_ENABLED", "1") == "1"
 # 代理池健康检测探针（启动后台并发探测，不可用的提前吊销；2xx/3xx 视为可用）
 PROXY_HEALTH_PROBE = os.environ.get(
     "PROXY_HEALTH_PROBE", "http://www.gstatic.com/generate_204")
+# 全局下载存档 / 死链列表（yt-dlp download-archive 语义）：
+# 存档记「已成功下载的 URL + 时间」，命中直接跳过；死链表记 404/410 等
+# 永久失败 URL，命中直接跳过。两个文件都在项目根目录（可用环境变量换位置）
+ARCHIVE_FILE = os.environ.get("RESOURCES_ARCHIVE_FILE", "download_archive.json")
+DEAD_FILE = os.environ.get("RESOURCES_DEAD_FILE", "dead_urls.json")
 
 # ---------------- 反爬与请求 ----------------
 # TLS 指纹模拟使用的浏览器（经 Scrapling/curl_cffi 支持）
