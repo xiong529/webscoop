@@ -49,7 +49,7 @@ def _dpapi(data: bytes, encrypt: bool) -> bytes:
     class DATA_BLOB(ctypes.Structure):
         _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
 
-    crypt32 = ctypes.windll.crypt32
+    crypt32 = getattr(ctypes, "windll").crypt32  # 仅 Windows 运行（_WIN 守卫）
     kernel32 = ctypes.cdll.kernel32
     buf = ctypes.create_string_buffer(data, len(data))
     blob_in = DATA_BLOB(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char)))
