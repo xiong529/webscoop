@@ -32,3 +32,7 @@ install.log
 logs/
 follow_list.json
 .ruff_cache/
+dist_win/
+dist_linux/
+deb_build/
+
