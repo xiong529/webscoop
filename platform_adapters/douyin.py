@@ -18,6 +18,7 @@ from platform_adapters import PlatformAdapter
 class DouyinAdapter(PlatformAdapter):
     name = "douyin"
     hosts = ("douyin.com", "iesdouyin.com")
+    path_regex = (r"^/(video|note|user|search|collection|vsearch)/",)
     api_filters = ("/aweme/v1/web/",)
     scroll_max = 6
 
@@ -32,6 +33,26 @@ class DouyinAdapter(PlatformAdapter):
                 if isinstance(u, str) and u.startswith("http"):
                     return u
         return ""
+
+    def _pick_formats(self, video: dict) -> list[dict]:
+        """多清晰度候选（标准化 formats 字段，供统一格式选择器择优）。"""
+        out = []
+        for key in self._PLAY_KEYS:
+            pa = video.get(key) or {}
+            lst = pa.get("url_list") or []
+            if not lst:
+                continue
+            u = next((x for x in lst if isinstance(x, str) and x.startswith("http")), "")
+            if not u:
+                continue
+            out.append({
+                "url": u,
+                "width": pa.get("width") or 0,
+                "height": pa.get("height") or 0,
+                "size": pa.get("data_size") or 0,
+                "label": key,
+            })
+        return out
 
     def _pick_cover_url(self, video: dict) -> str:
         for key in ("cover", "origin_cover", "dynamic_cover", "gaussian_cover"):
@@ -55,6 +76,7 @@ class DouyinAdapter(PlatformAdapter):
               if uri else "")
         name = (aweme.get("desc") or aweme.get("caption") or "").strip()[:60] or (
             aweme.get("aweme_id") or "douyin-video")
+        fmts = self._pick_formats(video)
         return [{
             "url": play,
             "kind": "video",
@@ -66,6 +88,7 @@ class DouyinAdapter(PlatformAdapter):
             "width": pa.get("width") or video.get("width") or 0,
             "height": pa.get("height") or video.get("height") or 0,
             "alt_url": dl,
+            "formats": fmts,
         }]
 
     def _image_resources(self, aweme: dict) -> list[dict]:

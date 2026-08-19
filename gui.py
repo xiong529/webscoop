@@ -540,6 +540,9 @@ class ResourceApp:
         self._backup_cancel = threading.Event()   # 备用下载/预览阶段取消标记
         self._stop_event = threading.Event()   # 发现/抓取阶段停止标记（「停止」按钮）
         self.seen_urls: set[str] = set()   # 本次会话已见过的 URL（去重）
+        # 后台定期探活代理池（幂等；失败代理提前吊销，快代理加权优先）
+        from resources_reptile.utils.proxy import ensure_health_monitor
+        ensure_health_monitor()
         self.follow_active = False         # 定时跟进调度是否运行中
         self._follow_stop = threading.Event()
         self._impersonate_rot = 0          # 指纹轮换游标

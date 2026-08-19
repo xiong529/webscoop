@@ -7,9 +7,12 @@
 本模块提供一个进程内共享的 ProxyPool：
 
 - load：从 proxies.txt / 环境变量 / Scrapy 设置一次性加载并缓存
-- next()：轮换挑选（可绑定站点，同一站点尽量用同一出口，避免抖 IP）
+- next()：轮换挑选（可绑定站点，同一站点尽量用同一出口，避免抖 IP）；
+  已采样的代理按「响应时间 + 最近使用」加权，快代理优先
 - revoke()：失败吊销，进入冷却，冷却期后重新可用（避免误杀临时抖动）
-- health_check()：启动并发探活，死代理提前吊销（避免首个请求撞坏代理）
+- health_check()：并发探活，死代理提前吊销（避免首个请求撞坏代理），
+  成功者记录响应时间供加权挑选；ensure_health_monitor() 起后台线程
+  定期探活（GUI / Scrapy 启动时各调一次，幂等）
 - 与 config.DEFAULT_PROXY 的关系：DEFAULT_PROXY 是「本机中转」，仍优先生效；
   代理池在无默认代理或默认代理失败时接管（保持历史语义，但真正生效）
 """
@@ -110,6 +113,7 @@ class ProxyPool:
         self._fails: dict[str, int] = {}       # proxy -> 连续失败次数
         self._revoked_until: dict[str, float] = {}  # proxy -> 解除吊销时间
         self._last_used: dict[str, float] = {}  # proxy -> 最近使用时间
+        self._latency: dict[str, float] = {}    # proxy -> 最近探活响应时间（秒）
         self._site_map: dict[str, str] = {}     # host -> 当前绑定的代理
         self._loaded_at = time.time() if proxies else 0.0
 
@@ -146,7 +150,12 @@ class ProxyPool:
         return out
 
     def _candidates_locked(self) -> list[str]:
-        """可用代理（未吊销或在冷却期外），优先选未用过的。"""
+        """可用代理（未吊销或在冷却期外），按「响应时间 + 最近使用」加权排序。
+
+        加权：已探活采样的代理里，响应快的优先（_latency 升序）；
+        未采样过的一律视为同权（走 last_used 轮换），首次使用即被
+        后台探活线程补采。排序键 = (latency 或同值, 最近使用升序)。
+        """
         now = time.time()
         self._reload_locked()
         usable = [
@@ -155,8 +164,12 @@ class ProxyPool:
         ]
         if not usable:
             return []
-        # 尽量轮换：最近最少使用的优先
-        return sorted(usable, key=lambda p: self._last_used.get(p, 0.0))
+        # 未采样的代理用 -1 键排在已采样之前：新代理优先试用并补采样，
+        # 采样收敛后同一档内按「快代理优先 + 少用优先」轮换
+        return sorted(
+            usable,
+            key=lambda p: (self._latency.get(p, -1),
+                           self._last_used.get(p, 0.0)))
 
     def proxy(self, host: str = "") -> str | None:
         """取一个代理。host 非空时优先返回该站点已绑定的代理（保持出口稳定）。"""
@@ -205,6 +218,7 @@ class ProxyPool:
         """并发探活池内所有代理；不可用的立即吊销（force），返回 proxy -> ok。
 
         probe_url 为空用默认探针；socks 代理跳过（视为可用）。
+        成功探活的代理记录响应时间（供 _candidates_locked 加权挑选）。
         """
         with self._lock:
             targets = list(self._proxies)
@@ -214,15 +228,30 @@ class ProxyPool:
         res_lock = threading.Lock()
 
         def probe(p: str) -> None:
+            t0 = time.monotonic()
             ok = _probe_one(p, probe_url or PROBE_DEFAULT_URL, timeout)
+            latency = time.monotonic() - t0
             with res_lock:
                 results[p] = ok
+                if ok:
+                    self._latency[p] = latency
             if not ok:
                 self.revoke(p, "health-fail", force=True)
 
         with ThreadPoolExecutor(max_workers=concurrency) as ex:
             list(ex.map(probe, targets))
         return results
+
+    def mark_used(self, proxy: str, ok: bool, latency: float = 0.0) -> None:
+        """下载侧回传单次使用结果：成功采样响应时间，失败计入吊销计数。"""
+        if not proxy:
+            return
+        if ok:
+            with self._lock:
+                self._latency[proxy] = latency if latency > 0 else self._latency.get(proxy, 0.0)
+            self.success(proxy)
+        else:
+            self.revoke(proxy, "use-fail")
 
     @property
     def size(self) -> int:
@@ -232,6 +261,36 @@ class ProxyPool:
 
 # 进程内共享单例
 pool = ProxyPool()
+
+
+# 后台定期探活（幂等启动：GUI / Scrapy 各调一次不重复起线程）
+_MONITOR_LOCK = threading.Lock()
+_MONITOR_STARTED = False
+
+
+def ensure_health_monitor(interval: float = 60.0, timeout: float = 5.0) -> None:
+    """启动后台代理探活线程（幂等）。
+
+    每 interval 秒对池内全部代理做一次并发探活：失败者立即吊销，
+    成功者刷新响应时间样本（供加权挑选）。代理池为空时跳过。
+    GUI 与 Scrapy 启动路径各调一次，内部保证只起一个线程。
+    """
+    global _MONITOR_STARTED
+    with _MONITOR_LOCK:
+        if _MONITOR_STARTED:
+            return
+        _MONITOR_STARTED = True
+
+    def loop() -> None:
+        while True:
+            time.sleep(interval)
+            try:
+                if pool.size:
+                    pool.health_check(timeout=timeout, concurrency=8)
+            except Exception:
+                pass  # 探活失败不干扰主流程，下轮再试
+
+    threading.Thread(target=loop, daemon=True, name="proxy-health").start()
 
 
 # 兼容旧接口：utils/proxy.py 曾导出这些函数

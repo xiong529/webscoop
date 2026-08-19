@@ -35,13 +35,17 @@ class PlatformAdapter:
     name: str = ""
     #: 页面域名列表（含子域名后缀，如 "douyin.com" 匹配 www.douyin.com）
     hosts: tuple[str, ...] = ()
+    #: 已知页面路径正则（如 ^/(video|note)/，对标 yt-dlp 的 _VALID_URL）。
+    #: 仅作适配器文档/未来消歧用，**不参与匹配**——短链（v.douyin.com/xxxx、
+    #: b23.tv/xxx）必须仅凭 hosts 命中（tests/unit_netsuite 契约）
+    path_regex: tuple[str, ...] = ()
     #: 接口 URL 特征子串：只有 URL 包含任一特征的 JSON 响应才会被捕获
     api_filters: tuple[str, ...] = ()
     #: 渲染捕获时自动滚动的次数（信息流/列表站触发懒加载；详情页设为 0）
     scroll_max: int = 0
 
     def match_page(self, url: str) -> bool:
-        """页面 URL 是否属于本平台。"""
+        """页面 URL 是否属于本平台（仅 hosts 域名匹配）。"""
         if not url or not self.hosts:
             return False
         host = (urlparse(url).netloc or "").lower()
@@ -108,9 +112,41 @@ def api_filters_for(page_url: str) -> tuple[str, ...] | None:
     return ad.api_filters if ad and ad.api_filters else None
 
 
+def _apply_format_selection(items: list[dict]) -> list[dict]:
+    """统一格式择优：条目带 ``formats``（多清晰度）时，按全局格式选择器
+    挑一条最优作为主 url，原顶级链保留在 ``url_original``（避免回归）。
+
+    与 bilibili 适配器内联选择逻辑对齐（都走 format_selector），
+    不提供 formats 的条目原样返回。
+    """
+    from format_selector import Format, select_formats
+    import config
+    spec = getattr(config, "FORMAT_SELECT_SPEC", "best[height<=1080]")
+    for it in items:
+        fmts = it.get("formats") or []
+        if not fmts:
+            continue
+        selections = [Format(
+            url=f.get("url", ""),
+            width=f.get("width") or 0,
+            height=f.get("height") or 0,
+            size=f.get("size") or 0,
+            label=f.get("label") or "",
+        ) for f in fmts if f.get("url")]
+        picked = select_formats(selections, spec) or select_formats(selections, "best")
+        if picked and picked.url != it.get("url"):
+            it["url_original"] = it.get("url")
+            it["url"] = picked.url
+    return items
+
+
 def extract_media_from_api(apis: list[dict], limit: int = 300,
                            url: str = "") -> list[dict]:
-    """按页面 URL 选适配器提取资源；URL 未命中时遍历所有适配器合并（去重）。"""
+    """按页面 URL 选适配器提取资源；URL 未命中时遍历所有适配器合并（去重）。
+
+    提取后的条目若带多清晰度 ``formats``，由统一格式选择器挑主 url
+    （见 _apply_format_selection）。
+    """
     results: list[dict] = []
     seen: set[str] = set()
     chosen = page_adapter(url) if url else None
@@ -123,5 +159,5 @@ def extract_media_from_api(apis: list[dict], limit: int = 300,
             seen.add(key)
             results.append(it)
             if len(results) >= limit:
-                return results
-    return results
+                return _apply_format_selection(results)
+    return _apply_format_selection(results)

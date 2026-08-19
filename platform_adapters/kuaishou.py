@@ -15,7 +15,8 @@ from platform_adapters import PlatformAdapter
 class KuaishouAdapter(PlatformAdapter):
     name = "kuaishou"
     hosts = ("kuaishou.com", "gifshow.com")
-    # graphql 是统一数据口；只匹配快手域的 graphql 避免撞上其他站
+    path_regex = (r"^/(short-video|live|photo|profile)/",)
+    # graphql 是统一数据口；只匹配快手域名下的 graphql 避免撞上其他的
     api_filters = ("/graphql?", "/graphql")
     scroll_max = 4
 

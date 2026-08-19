@@ -23,6 +23,7 @@ from platform_adapters import PlatformAdapter
 class BilibiliAdapter(PlatformAdapter):
     name = "bilibili"
     hosts = ("bilibili.com", "b23.tv")
+    path_regex = (r"^/(video|bangumi|space|search)/",)
     api_filters = ("api.bilibili.com/",)
     scroll_max = 4
 

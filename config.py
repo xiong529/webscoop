@@ -133,6 +133,11 @@ LLM_TIMEOUT = int(os.environ.get("RESOURCES_LLM_TIMEOUT", "120"))
 LLM_CONFIG_FILE = os.environ.get("RESOURCES_LLM_CONFIG_FILE",
                                  os.path.join(BASE_DIR, "llm_config.json"))
 
+# ---------------- 统一格式选择 ----------------
+# 适配器/接口提取的多清晰度候选，按此 spec 挑主 url（format_selector 语法，
+# 如 best[height<=1080] / worst；可用环境变量 RESOURCES_FORMAT_SPEC 覆盖）
+FORMAT_SELECT_SPEC = os.environ.get("RESOURCES_FORMAT_SPEC", "best[height<=1080]")
+
 # ---------------- Pexels API 抓取 ----------------
 # API 自动翻页上限（每页最多 80 条，翻页跟随 next_page）
 API_PAGE_LIMIT = int(os.environ.get("RESOURCES_API_PAGE_LIMIT", "3"))

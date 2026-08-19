@@ -116,6 +116,9 @@ class RandomProxyMiddleware:
         self.enabled = crawler.settings.getbool("PROXY_ENABLED", False)
         self.pool = current_pool()
         self.logger = crawler.logger if hasattr(crawler, "logger") else None
+        if self.enabled:
+            from .utils.proxy import ensure_health_monitor
+            ensure_health_monitor()
 
     @classmethod
     def from_crawler(cls, crawler):

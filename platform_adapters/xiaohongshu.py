@@ -14,6 +14,7 @@ from platform_adapters import PlatformAdapter
 class XiaohongshuAdapter(PlatformAdapter):
     name = "xiaohongshu"
     hosts = ("xiaohongshu.com",)
+    path_regex = (r"^/(explore|user|search_result|discovery)/",)
     api_filters = ("edith.xiaohongshu.com/api/sns/web/",)
     scroll_max = 4
 
