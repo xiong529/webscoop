@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "webscoop"
+dynamic = ["version"]
+description = "资源采集与下载工具（GUI）：抖音/快手/小红书/B站 等平台资源发现、下载、存档"
+requires-python = ">=3.10"
+dependencies = [
+    "scrapy==2.17.0",
+    "requests==2.34.2",
+    "beautifulsoup4==4.15.0",
+    "Pillow==12.3.0",
+    "scrapling==0.4.14",
+    "curl_cffi==0.16.0",
+    "python-vlc==3.0.21203",
+    "gallery-dl==1.32.9",
+    "pycryptodome==3.23.0",
+    "playwright==1.62.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/xiong529/webscoop"
+
+[project.scripts]
+webscoop = "gui:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "resources_reptile.__version__" }
+
+[tool.setuptools]
+packages = [
+    "resources_reptile",
+    "resources_reptile.spiders",
+    "resources_reptile.utils",
+    "platform_adapters",
+]
+py-modules = [
+    "api_discoverer",
+    "applog",
+    "config",
+    "cookie_capture",
+    "dead_list",
+    "discover_common",
+    "download_archive",
+    "follow_list",
+    "format_selector",
+    "gallery_backup",
+    "gui",
+    "gui_crawler",
+    "gui_fetch",
+    "hls_downloader",
+    "hot_search",
+    "kvjournal",
+    "llm_rules",
+    "player_vlc",
+    "renderer",
+    "secret_store",
+    "stats",
+]
