@@ -35,8 +35,8 @@ def _dpapi_available() -> bool:
     if os.environ.get(_PLAINTEXT_ENV) == "1":
         return False
     try:
-        import ctypes  # noqa: F401
-        return hasattr(__import__("ctypes").windll, "crypt32")
+        import ctypes
+        return hasattr(getattr(ctypes, "windll", None), "crypt32")
     except Exception:
         return False
 
