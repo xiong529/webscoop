@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from typing import Any
 
 
 class KVJournal:
@@ -32,11 +33,11 @@ class KVJournal:
         self._max_entries = max(1, int(max_entries))
         self._compact_growth = max(1.1, float(compact_growth))
         self._lock = threading.Lock()
-        self._data: dict | None = None  # 惰性加载；None = 未加载
+        self._data: dict[str, dict[str, Any]] | None = None  # 惰性加载；None = 未加载
 
     # ---------------- 读取 ----------------
 
-    def _parse_line(self, line: str) -> tuple | None:
+    def _parse_line(self, line: str) -> tuple[str, dict[str, Any]] | None:
         line = line.strip()
         if not line:
             return None
@@ -49,10 +50,10 @@ class KVJournal:
         k, v = next(iter(obj.items()))
         return k, v
 
-    def _load_locked(self) -> dict:
+    def _load_locked(self) -> dict[str, dict[str, Any]]:
         if self._data is not None:
             return self._data
-        data: dict = {}
+        data: dict[str, dict[str, Any]] = {}
         try:
             with open(self._path, "r", encoding="utf-8") as f:
                 text = f.read()
@@ -80,12 +81,13 @@ class KVJournal:
 
     def _evict_locked(self) -> bool:
         """超过上限：按条目内 "t"（时间戳）淘汰最旧，返回是否需要压缩重写。"""
-        if len(self._data) <= self._max_entries:
+        data = self._load_locked()
+        if len(data) <= self._max_entries:
             return False
-        ordered = sorted(self._data.items(),
+        ordered = sorted(data.items(),
                          key=lambda kv: (kv[1].get("t", 0) if isinstance(kv[1], dict) else 0, kv[0]))
-        for key, _ in ordered[:len(self._data) - self._max_entries]:
-            self._data.pop(key, None)
+        for key, _ in ordered[:len(data) - self._max_entries]:
+            data.pop(key, None)
         return True
 
     def _compact_locked(self) -> None:
@@ -98,7 +100,7 @@ class KVJournal:
         except OSError:
             pass
 
-    def _append(self, key: str, value: dict) -> None:
+    def _append(self, key: str, value: dict[str, Any]) -> None:
         with self._lock:
             data = self._load_locked()
             data[key] = value
@@ -115,13 +117,13 @@ class KVJournal:
 
     # ---------------- 公开 API ----------------
 
-    def set(self, key: str, value: dict) -> None:
+    def set(self, key: str, value: dict[str, Any]) -> None:
         """记录/覆盖一个键（append 一行，O(1)）。"""
         if not key or not isinstance(value, dict):
             return
         self._append(key, value)
 
-    def get(self, key: str):
+    def get(self, key: str) -> dict[str, Any] | None:
         self._lock.acquire()
         try:
             return self._load_locked().get(key)

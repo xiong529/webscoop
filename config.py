@@ -183,7 +183,7 @@ ROBOTS_OBEY_DEFAULT = os.environ.get("RESOURCES_ROBOTS", "0") == "1"
 ROBOTS_POLICY: dict[str, bool] = {}
 
 
-def proxy_dict() -> dict:
+def proxy_dict() -> dict[str, str]:
     """构造 requests 风格的代理字典。"""
     if not DEFAULT_PROXY:
         return {}

@@ -19,7 +19,7 @@ import re
 try:
     import config  # 项目配置（提供 COOKIE 相关开关/路径）
 except Exception:  # pragma: no cover - 独立测试环境
-    config = None
+    config = None  # type: ignore[assignment]
 
 _loaded = False
 _rules: dict[str, str] = {}  # host(lower, 无通配) -> cookie 值；"*" 为全域名
@@ -56,7 +56,7 @@ def cookie_file_path(path: str = "") -> str:
     return os.path.join(root, p)
 
 
-def _load_once():
+def _load_once() -> None:
     global _loaded, _rules
     if _loaded:
         return

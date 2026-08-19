@@ -1,0 +1,19 @@
+[run]
+branch = True
+parallel = True
+source = .
+omit =
+    .venv/*
+    tests/*
+    dist_win/*
+    dist_linux/*
+    build/*
+    deb_build/*
+
+[report]
+show_missing = True
+precision = 1
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING
+    raise NotImplementedError

@@ -92,7 +92,8 @@ def _probe_one(proxy: str, probe_url: str, timeout: float) -> bool:
         req = urllib.request.Request(
             probe_url, headers={"User-Agent": "webscoop-health/1.0"})
         with opener.open(req, timeout=timeout) as resp:
-            return 200 <= resp.status < 400
+            code = int(resp.status)
+            return 200 <= code < 400
     except Exception:
         return False
 

@@ -6,28 +6,41 @@ on:
   pull_request:
 
 jobs:
-  test:
+  lint-type-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Lint (ruff)
+      - name: Ruff lint
         run: ruff check .
 
       - name: Compile check
         run: python -m compileall -q .
 
-      - name: Unit tests (no browser / no network)
-        run: python -X utf8 tests/run_all.py unit
+      - name: Mypy (strict core modules)
+        run: |
+          mypy resources_reptile/utils/proxy.py \
+               resources_reptile/utils/cookies.py \
+               secret_store.py kvjournal.py download_archive.py \
+               dead_list.py format_selector.py
+
+      - name: Unit tests + coverage
+        run: |
+          set -e
+          for suite in tests/unit_*.py; do
+            python -m coverage run --rcfile=.coveragerc "$suite"
+          done
+          python -m coverage combine
+          python -m coverage report --fail-under=30
 
       - name: E2E tests (local HTTP services)
         run: python -X utf8 tests/run_all.py e2e_stream e2e_mime e2e_retry e2e_scrapy_stats

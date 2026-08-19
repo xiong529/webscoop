@@ -71,7 +71,7 @@ def _matches(cond: str, fmt: Format) -> bool:
     }[op]
 
 
-def _sort_key(fmt: Format) -> tuple:
+def _sort_key(fmt: Format) -> tuple[int, int, int, int]:
     """排序键：主序分辨率，未知(0)垫底；次序宽度；再序尺寸；末序变体名权重。"""
     return (fmt.height or -1, fmt.width or -1, fmt.size, _VARIANT_ORDER.get(fmt.label, -1))
 
