@@ -26,6 +26,8 @@ SUITES = {
     "unit_fallback": "Scrapling 第三层兜底接线(mock)",
     "unit_cookie_render": "渲染登录态注入:cookies.txt -> add_cookies / 头兜底",
     "unit_llm": "LLM 规则生成器:样例提取 / 提示 / 假 LLM 全流程 / 正则校验 / 合并",
+    "unit_cli": "无头 CLI:任务注册表 / follow 子命令 / 参数解析",
+    "unit_server": "REST API:路由 / 鉴权 / 入参校验 / 任务接线(回环)",
     "e2e_stream": "Discoverer 流式回调 + 可打断(本地 HTTP,30 延迟图片)",
     "e2e_mime": "管道 MIME 嗅探(无扩展名链接按 Content-Type 归类)",
     "e2e_retry": "下载重试 + failures.json 持久化与清理",

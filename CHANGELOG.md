@@ -3,6 +3,14 @@
 格式：平台差异说明见 scripts/changelog_gen.py（发版草稿自动生成入口）；
 本文件为按版本手校的汇总，发版时以生成器草稿为准微调。
 
+## 1.0.8（2026-08-20）无头化批
+
+- CLI（headless）：`webscoop discover / download / follow add|list|remove|clear|run / serve / doctor / gui`，不依赖 tkinter，为 Docker/服务器铺路
+- REST API（127.0.0.1 仅回环、可选 token）：`POST /api/discover`、`POST /api/download`、`GET /api/tasks[/{id}]`、`GET /api/stats`、`GET /api/health`；stdlib 实现零新增依赖；供 iOS 快捷指令/脚本批处理
+- 无头核心 headless.py：任务注册表（排队/运行/完成/失败 + 进度），CLI 与 API 共用
+- pyproject 入口调整：`webscoop`=CLI，`webscoop-gui`=GUI；新增模块入 py-modules
+- README 首屏重排：定位一句话 → 功能 → 截图 → 下载 → 三种使用方式
+
 ## 1.0.7（2026-08-20）质量门禁批
 
 - 依赖锁定：requirements.txt 全量精确锁定并实测核实（scrapy 2.17.0 / requests 2.34.2 / beautifulsoup4 4.15.0 / Pillow 12.3.0 / scrapling 0.4.14 / curl_cffi 0.16.0 / python-vlc 3.0.21203 / gallery-dl 1.32.9 / pycryptodome 3.23.0 / playwright 1.62.0）

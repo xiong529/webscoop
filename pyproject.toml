@@ -24,7 +24,8 @@ dependencies = [
 Homepage = "https://github.com/xiong529/webscoop"
 
 [project.scripts]
-webscoop = "gui:main"
+webscoop = "cli:main"
+webscoop-gui = "gui:main"
 
 [tool.setuptools.dynamic]
 version = { attr = "resources_reptile.__version__" }
@@ -39,6 +40,7 @@ packages = [
 py-modules = [
     "api_discoverer",
     "applog",
+    "cli",
     "config",
     "cookie_capture",
     "dead_list",
@@ -50,6 +52,7 @@ py-modules = [
     "gui",
     "gui_crawler",
     "gui_fetch",
+    "headless",
     "hls_downloader",
     "hot_search",
     "kvjournal",
@@ -57,5 +60,6 @@ py-modules = [
     "player_vlc",
     "renderer",
     "secret_store",
+    "server",
     "stats",
 ]
