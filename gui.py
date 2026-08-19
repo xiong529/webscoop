@@ -254,8 +254,8 @@ class ApiDialog(tk.Toplevel):
         if key:
             return key
         try:
-            with open(config.API_KEY_FILE, "r", encoding="utf-8") as f:
-                return f.read().strip()
+            from secret_store import read_secret
+            return read_secret(config.API_KEY_FILE).strip()
         except OSError:
             return ""
 
@@ -263,8 +263,8 @@ class ApiDialog(tk.Toplevel):
         if not key:
             return
         try:
-            with open(config.API_KEY_FILE, "w", encoding="utf-8") as f:
-                f.write(key)
+            from secret_store import write_secret
+            write_secret(config.API_KEY_FILE, key)
         except OSError:
             pass
 

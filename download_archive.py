@@ -8,19 +8,29 @@ URL 归一：取 ``scheme://host/path``（丢弃查询串）。原因：抖音/�
 直链的参数每次过期变化，但同一资源的 path 稳定；按 path 判定不会误判不同
 清晰度（不同变体路径不同）。
 
-线程安全：进程内锁 + 写临时文件后原子替换；写失败静默（不阻塞下载）。
+存储（kvjournal）：append-only JSONL + 上限淘汰 + 惰性压缩，量大时不卡写
+（旧版每记一条全量重写整个 JSON，几十万条时逐下载卡顿）。旧 JSON 文件
+读取兼容，升级无缝。
 """
 
 from __future__ import annotations
 
-import json
 import os
-import threading
 import time
 from urllib.parse import urlparse
 
-_lock = threading.Lock()
-_cache: dict[str, dict] | None = None  # canonical url -> {"t": ts, "size": bytes}
+from kvjournal import KVJournal
+
+_locked_journal: KVJournal | None = None
+
+
+def _journal() -> KVJournal:
+    global _locked_journal
+    if _locked_journal is None:
+        _locked_journal = KVJournal(archive_file(),
+                                    max_entries=int(os.environ.get(
+                                        "RESOURCES_ARCHIVE_MAX", "200000")))
+    return _locked_journal
 
 
 def archive_file() -> str:
@@ -34,48 +44,22 @@ def canonical_url(url: str) -> str:
     return f"{p.scheme}://{p.netloc.lower()}{p.path}"
 
 
-def _load_locked() -> dict:
-    global _cache
-    if _cache is None:
-        try:
-            with open(archive_file(), "r", encoding="utf-8") as f:
-                data = json.load(f)
-            _cache = data if isinstance(data, dict) else {}
-        except (OSError, ValueError):
-            _cache = {}
-    return _cache
-
-
 def contains(url: str) -> bool:
     """URL 是否已在存档中（已成功下载过）。"""
-    with _lock:
-        return canonical_url(url) in _load_locked()
+    return _journal().contains(canonical_url(url))
 
 
 def record(url: str, size: int = 0) -> None:
-    """记录一次成功下载（URL 归一后写入；写失败静默，不阻塞下载）。"""
+    """记录一次成功下载（URL 归一后追加一行；写失败静默，不阻塞下载）。"""
     if not url:
         return
-    with _lock:
-        data = _load_locked()
-        data[canonical_url(url)] = {"t": int(time.time()), "size": size}
-        path = archive_file()
-        tmp = path + ".tmp"
-        try:
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=0)
-            os.replace(tmp, path)
-        except OSError:
-            pass
+    _journal().set(canonical_url(url), {"t": int(time.time()), "size": size})
 
 
 def clear() -> None:
     """清空内存缓存（测试/手动重置用；下次访问时按文件重建）。"""
-    global _cache
-    with _lock:
-        _cache = None
+    _journal().clear()
 
 
 def size() -> int:
-    with _lock:
-        return len(_load_locked())
+    return _journal().size()

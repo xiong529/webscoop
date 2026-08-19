@@ -67,15 +67,16 @@ def _load_once():
     path = cookie_file_path()
     if os.path.exists(path):
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                for ln in f:
-                    parsed = _parse_cookie_line(ln)
-                    if parsed:
-                        host, cookie = parsed
-                        if host == "*":
-                            _rules["*"] = cookie  # 后行覆盖
-                        else:
-                            _rules.setdefault(host, cookie)
+            from secret_store import read_secret
+            content = read_secret(path)
+            for ln in content.splitlines():
+                parsed = _parse_cookie_line(ln)
+                if parsed:
+                    host, cookie = parsed
+                    if host == "*":
+                        _rules["*"] = cookie  # 后行覆盖
+                    else:
+                        _rules.setdefault(host, cookie)
         except OSError:
             pass
     _loaded = True

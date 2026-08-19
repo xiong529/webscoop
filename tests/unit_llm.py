@@ -94,6 +94,17 @@ ok, err = llm_rules.validate_rule({"transform": "regex_sub", "search": "a", "rep
                                    "kind": "audio"})
 check("bad kind rejected", ok, False)
 
+# --- ReDoS 防线 ---
+ok, err = llm_rules.validate_rule({"transform": "regex_sub",
+                                   "search": "((a+)+)b", "replace": "b"})
+check("redos: nested quantifier rejected", (ok, err), (False, "search: 正则含嵌套量词（如 (a+)+），存在 ReDoS 风险"))
+ok, err = llm_rules.validate_rule({"transform": "regex_sub",
+                                   "search": "a" * 250, "replace": "b"})
+check("redos: overlong regex rejected", ok, False)
+ok, err = llm_rules.validate_rule({"transform": "regex_sub",
+                                   "search": r"prod(\d{1,5})\d", "replace": "b"})
+check("redos: bounded quantifier allowed", (ok, err), (True, None))
+
 # --- 假 LLM 全流程 ---
 def fake_llm(messages, **kw):
     return json.dumps({

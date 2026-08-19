@@ -39,13 +39,18 @@ MAX_SAMPLES_PER_KIND = 25
 # ================================================================
 
 def load_llm_config() -> dict:
-    """读取本地 LLM 配置(LLM_CONFIG_FILE)。环境变量优先于文件值。"""
+    """读取本地 LLM 配置(LLM_CONFIG_FILE)。环境变量优先于文件值。
+
+    文件可能被 secret_store 加密（Windows DPAPI），读取透明处理。
+    """
     cfg = {}
     try:
-        with open(config.LLM_CONFIG_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, dict):
-            cfg = {k: data.get(k, "") for k in ("base_url", "api_key", "model")}
+        from secret_store import read_secret
+        raw = read_secret(config.LLM_CONFIG_FILE)
+        if raw:
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                cfg = {k: data.get(k, "") for k in ("base_url", "api_key", "model")}
     except (OSError, json.JSONDecodeError):
         pass
     cfg["base_url"] = os.environ.get("RESOURCES_LLM_BASE", cfg.get("base_url")
@@ -58,7 +63,8 @@ def load_llm_config() -> dict:
 
 
 def save_llm_config(base_url: str = "", api_key: str = "", model: str = "") -> str:
-    """把 LLM 配置写回 LLM_CONFIG_FILE。返回 (OK|错误信息)。"""
+    """把 LLM 配置写回 LLM_CONFIG_FILE（敏感字段经 secret_store 加密）。
+    返回 (OK|错误信息)。"""
     cfg = load_llm_config()
     cfg.update({
         "base_url": (base_url or cfg.get("base_url") or "").strip() or config.LLM_BASE_URL,
@@ -66,8 +72,9 @@ def save_llm_config(base_url: str = "", api_key: str = "", model: str = "") -> s
         "model": (model or cfg.get("model") or "").strip() or config.LLM_MODEL,
     })
     try:
-        with open(config.LLM_CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        from secret_store import write_secret
+        write_secret(config.LLM_CONFIG_FILE,
+                     json.dumps(cfg, ensure_ascii=False, indent=2))
         return ""
     except OSError as exc:
         return f"写入失败: {exc}"
@@ -293,8 +300,22 @@ def parse_rule(text: str) -> tuple:
     return rule, None
 
 
+_NESTED_QUANT_RE = re.compile(
+    r"\(\s*(?:[^()\\]|\\.)*?[+*][^()]*\)\s*[+*?]")
+
+
+def _reject_redos(pattern: str) -> str | None:
+    """ReDoS 启发式防线：LLM 生成的正则可能被恶意构造（(a+)+ 等），
+    对长度与嵌套量词做前置拦截（subject 是短 URL，这两条已够用）。"""
+    if len(pattern) > 200:
+        return f"正则过长（{len(pattern)}>200 字符），存在 ReDoS 风险"
+    if _NESTED_QUANT_RE.search(pattern):
+        return "正则含嵌套量词（如 (a+)+），存在 ReDoS 风险"
+    return None
+
+
 def validate_rule(rule: dict) -> tuple:
-    """校验 LLM 建议的规则（调试正则合法性）。返回 (ok, 错误信息或 None)。"""
+    """校验 LLM 建议的规则（调试正则合法性 + ReDoS 防线）。返回 (ok, 错误信息或 None)。"""
     if not isinstance(rule, dict):
         return False, "不是字典"
     if rule.get("skip"):
@@ -312,6 +333,9 @@ def validate_rule(rule: dict) -> tuple:
             re.compile(val)
         except re.error as exc:
             return False, f"{field} 不是合法正则: {exc}"
+        bad = _reject_redos(val)
+        if bad:
+            return False, f"{field}: {bad}"
     if transform == "regex_sub" and not (rule.get("search") and rule.get("replace")):
         return False, "regex_sub 必须提供 search 与 replace"
     kind = rule.get("kind", "any")

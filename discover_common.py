@@ -126,6 +126,9 @@ def render_dest_template(res, template: str = "") -> str:
         rendered = rendered.replace(key, val)
     parts = [p for p in rendered.split("/") if p.strip(" .")]
     parts = [sanitize_name(p) for p in parts]
+    # 防御性去重：任何来源（模板/URL）都无法生成 "" / "." / ".." 段，
+    # 杜绝路径穿越（resolved 后必然落在 dest 目录内）
+    parts = [p for p in parts if p not in ("", ".", "..")]
     rel = "/".join(parts)
     if not rel:
         rel = f"{tokens['{category}']}/{tokens['{name}']}"

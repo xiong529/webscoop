@@ -129,6 +129,12 @@ class FetchSession:
         except Exception:
             pass
 
+    def __enter__(self) -> "FetchSession":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
     def _wrap(self, resp, url, content=None) -> "FetchResponse":
         body = content if content is not None else resp.content
         return FetchResponse(

@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 
 from resources_reptile.utils.cookies import load_cookie
@@ -185,6 +186,7 @@ class CookieCaptureSession:
             with open(path, "a", encoding="utf-8") as f:
                 f.write(f"\n# ===== 手动粘贴 {time_str()} =====\n")
                 f.write(f"{row_host}:  {hd}\n")
+            restrict_file(path)
             reload_cookie()
             return 1, f"已写入 {row_host}:  {hd[:40]}…（{path}）"
         except OSError as exc:
@@ -217,6 +219,7 @@ class CookieCaptureSession:
                         time_str())
                 for ln in lines:
                     f.write(ln + "\n")
+            restrict_file(path)
             # 让运行中的抓取进程立即生效（utils.cookies 首次加载后有缓存）
             try:
                 from resources_reptile.utils.cookies import reload_cookie
@@ -249,3 +252,16 @@ class CookieCaptureSession:
 def time_str() -> str:
     import datetime
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def restrict_file(path: str) -> None:
+    """POSIX 权限收紧到 0600（Windows 用不到的机制跳过）。
+
+    cookies.txt 保持明文（用户会手工粘贴/编辑此文件），但只有本用户可读；
+    Windows 无 0600 语义，泄露面由 .gitignore + 单机使用习惯兜底。
+    """
+    if os.name != "nt":
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass

@@ -88,6 +88,10 @@ def _test_proxy_pool():
     pn.revoke("8.8.8.8:80", "403")
     check("pool: plain revoke still counts", pn._fails.get("8.8.8.8:80") == 1
           and pn._revoked_until.get("8.8.8.8:80", 0) == 0)
+    # 容量上限：超过 max_size 的代理被截断（防内存无限增长）
+    pc = ProxyPool(proxies=["1.1.1.1:1", "2.2.2.2:2", "3.3.3.3:3", "4.4.4.4:4",
+                            "5.5.5.5:5"], max_size=3)
+    check("pool: max_size truncates load", pc.size == 3)
     # 健康检测：探活失败立即吊销（force），探活成功保留
     orig_probe = _pmod._probe_one
     _pmod._probe_one = lambda p, u, t: p == "7.7.7.7:80"

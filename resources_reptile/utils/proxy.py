@@ -101,20 +101,25 @@ class ProxyPool:
     """进程内共享代理池：轮换挑选 + 失败吊销（带冷却）。
 
     线程安全：GUI 多线程下载与 Scrapy 下载器可能并发取代理。
+    容量上限：加载/重载时截断到 max_size（默认取 RESOURCES_PROXY_POOL_MAX，
+    默认 200），防止代理文件被误写超长导致内存无限增长。
     """
 
     def __init__(self, cool_seconds: int = 300, max_fails: int = 2,
-                 proxies: list[str] | None = None, cache_file: str = ""):
+                 proxies: list[str] | None = None, cache_file: str = "",
+                 max_size: int = 0):
         self._lock = threading.Lock()
-        self._proxies: list[str] = list(proxies or [])
         self._cache_file = cache_file  # 非空时从该文件加载（测试注入用）
         self._cool_seconds = cool_seconds      # 吊销后冷却时长（秒）
         self._max_fails = max_fails            # 连续失败多少次吊销
+        self._max_size = max(1, int(max_size or os.environ.get(
+            "RESOURCES_PROXY_POOL_MAX", "200")))
         self._fails: dict[str, int] = {}       # proxy -> 连续失败次数
         self._revoked_until: dict[str, float] = {}  # proxy -> 解除吊销时间
         self._last_used: dict[str, float] = {}  # proxy -> 最近使用时间
         self._latency: dict[str, float] = {}    # proxy -> 最近探活响应时间（秒）
         self._site_map: dict[str, str] = {}     # host -> 当前绑定的代理
+        self._proxies: list[str] = list(proxies or [])[:self._max_size]
         self._loaded_at = time.time() if proxies else 0.0
 
     def _reload_locked(self) -> None:
@@ -126,7 +131,7 @@ class ProxyPool:
         else:
             loaded = load_proxies()
         if loaded:
-            self._proxies = loaded
+            self._proxies = loaded[:self._max_size]
             self._loaded_at = time.time()
 
     def reload_now(self) -> None:
