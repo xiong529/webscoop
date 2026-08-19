@@ -125,6 +125,12 @@ class ProxyPool:
             self._proxies = loaded
             self._loaded_at = time.time()
 
+    def reload_now(self) -> None:
+        """立即重读代理来源（GUI「代理设置」保存后调用，跳过 60s 冷却缓存）。"""
+        with self._lock:
+            self._loaded_at = 0.0
+            self._reload_locked()
+
     @staticmethod
     def _load_from_file(path: str) -> list[str]:
         from pathlib import Path

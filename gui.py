@@ -408,6 +408,119 @@ class LlmDialog(tk.Toplevel):
             self.status_var.set("已保存，llm_rules.py / GUI 将使用该配置")
 
 
+class ProxyDialog(tk.Toplevel):
+    """代理设置弹窗：本机中转代理 + 代理池（proxies.txt），测试连通 + 保存即生效。"""
+
+    PROBE_URL = "https://www.gstatic.com/generate_204"
+
+    def __init__(self, app):
+        super().__init__(app.root)
+        self.title("代理设置")
+        self.geometry("560x430")
+        self.resizable(False, False)
+        self.transient(app.root)
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self.app = app
+
+        body = ttk.Frame(self, padding=10)
+        body.pack(fill=tk.BOTH, expand=True)
+
+        r0 = ttk.Frame(body)
+        r0.pack(fill=tk.X)
+        ttk.Label(r0, text="本机中转代理:").pack(side=tk.LEFT)
+        self.main_var = tk.StringVar(value=config.DEFAULT_PROXY)
+        self.main_entry = ttk.Entry(r0, textvariable=self.main_var)
+        self.main_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0))
+        self.main_entry.bind("<Return>", lambda _e: self._test_connection())
+        _bind_tooltip(self.main_entry, "所有请求优先生效；可留空表示不用中转，仅走下方代理池")
+
+        ttk.Label(body, text="代理池（每行一个代理，格式: scheme://[user:password@]host:port）",
+                  foreground="#666").pack(anchor="w", pady=(8, 2))
+        self.pool_text = tk.Text(body, height=11, width=64, wrap="none")
+        self.pool_text.pack(fill=tk.BOTH, expand=True)
+        self.pool_text.insert("1.0", self._load_pool_text())
+        _bind_tooltip(self.pool_text, "保存时写回 proxies.txt；第一行成为「本机中转代理」，"
+                                      "其余行参与轮换，失败自动吊销换下一个")
+
+        r3 = ttk.Frame(body)
+        r3.pack(fill=tk.X, pady=(10, 0))
+        self.test_btn = ttk.Button(r3, text="测试连接", command=self._test_connection)
+        self.test_btn.pack(side=tk.LEFT)
+        self.save_btn = ttk.Button(r3, text="保存", command=self._save)
+        self.save_btn.pack(side=tk.LEFT, padx=(6, 0))
+        ttk.Button(r3, text="关闭", command=self.destroy).pack(side=tk.RIGHT)
+
+        self.status_var = tk.StringVar(value="")
+        ttk.Label(body, textvariable=self.status_var, foreground="#666",
+                  wraplength=520).pack(anchor="w", pady=(8, 0))
+
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+    @staticmethod
+    def _load_pool_text() -> str:
+        try:
+            with open(os.path.join(config.BASE_DIR, "proxies.txt"),
+                      encoding="utf-8") as f:
+                return f.read()
+        except OSError:
+            return ""
+
+    def _pool_entries(self) -> list[str]:
+        out = []
+        for line in self.pool_text.get("1.0", tk.END).splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                out.append(line)
+        return out
+
+    def _set_busy(self, busy: bool):
+        state = tk.DISABLED if busy else tk.NORMAL
+        self.test_btn.config(state=state)
+        self.save_btn.config(state=state)
+
+    def _test_connection(self):
+        import urllib.request
+        entry = self.main_var.get().strip()
+        if not entry:
+            self.status_var.set("请先填写本机中转代理")
+            return
+        self.status_var.set("正在测试连接…")
+        self._set_busy(True)
+
+        def worker():
+            try:
+                opener = urllib.request.build_opener(
+                    urllib.request.ProxyHandler({"http": entry, "https": entry}))
+                with opener.open(self.PROBE_URL, timeout=8) as resp:
+                    msg = f"连接成功（{resp.status}）"
+            except Exception as exc:
+                msg = f"连接失败: {exc}"
+            self.after(0, lambda: (self.status_var.set(msg), self._set_busy(False)))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _save(self):
+        main = self.main_var.get().strip()
+        pool = self._pool_entries()
+        lines = [main] if main else []
+        for p in pool:
+            if p != main and p not in lines:
+                lines.append(p)
+        try:
+            with open(os.path.join(config.BASE_DIR, "proxies.txt"),
+                      "w", encoding="utf-8") as f:
+                f.write("# 每行一个代理，格式：scheme://[user:password@]host:port\n")
+                f.write("# 首行 = 本机中转代理（GUI「代理设置」维护），其余行进入代理池轮换\n")
+                f.write("\n".join(lines) + "\n")
+        except OSError as exc:
+            self.status_var.set(f"保存失败: {exc}")
+            return
+        config.DEFAULT_PROXY = main
+        from resources_reptile.utils.proxy import pool as proxy_pool
+        proxy_pool.reload_now()
+        self.status_var.set("已保存并立即生效（重启后同样保留）")
+
+
 class ResourceApp:
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -532,6 +645,10 @@ class ResourceApp:
         self.cookie_btn.pack(side=tk.LEFT, padx=2)
         _bind_tooltip(self.cookie_btn, "弹出真实浏览器手动登录（独立临时上下文，不碰日常浏览器数据），"
                                       "登录后把 Cookie 写入 cookies.txt 供需要登录态的站点注入")
+        self.proxy_btn = ttk.Button(row2, text="代理设置…", command=self.open_proxy_dialog)
+        self.proxy_btn.pack(side=tk.LEFT, padx=2)
+        _bind_tooltip(self.proxy_btn, "配置本机中转代理与代理池（proxies.txt），可测试连通性，"
+                                      "保存后立即生效、重启保留")
 
         # ---- 下载文件名模板 ----
         tmpl = ttk.Frame(self.root, padding=(8, 0))
@@ -661,6 +778,15 @@ class ResourceApp:
             dlg.focus_force()
             return
         CookieDialog(self)
+
+    def open_proxy_dialog(self):
+        """打开「代理设置」弹窗（已存在则前置）。"""
+        dlg = getattr(self, "_proxy_dialog", None)
+        if dlg is not None and dlg.winfo_exists():
+            dlg.lift()
+            dlg.focus_force()
+            return
+        self._proxy_dialog = ProxyDialog(self)
 
     def open_search_dialog(self):
         """打开「关键词搜索」弹窗：按平台构造搜索页 URL → 走正常发现流程。"""

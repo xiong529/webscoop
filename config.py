@@ -17,8 +17,25 @@ SCRAPY_DOWNLOAD_DIR = os.environ.get("RESOURCES_SCRAPY_DIR", os.path.join(BASE_D
 
 # ---------------- 代理 ----------------
 # 本地代理地址（默认 http://127.0.0.1:7890，即 Clash 等客户端常见默认端口；
-# 如有差异可设环境变量 RESOURCES_PROXY 覆盖；如无需代理可设为 "" ）
-DEFAULT_PROXY = os.environ.get("RESOURCES_PROXY", "http://127.0.0.1:7890")
+# 也可设环境变量 RESOURCES_PROXY 覆盖；如无需代理可设为 "" ）。
+# 读取顺序：环境变量 RESOURCES_PROXY → proxies.txt 首个有效行（GUI「代理设置」
+# 弹窗维护该行）→ 上方默认值。
+def _load_default_proxy() -> str:
+    v = os.environ.get("RESOURCES_PROXY", "").strip()
+    if v:
+        return v
+    try:
+        with open(os.path.join(BASE_DIR, "proxies.txt"),
+                  encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    return line
+    except OSError:
+        pass
+    return "http://127.0.0.1:7890"
+
+DEFAULT_PROXY = _load_default_proxy()
 # 是否默认启用代理（走本机中转）
 PROXY_ENABLED = os.environ.get("RESOURCES_PROXY_ENABLED", "1") == "1"
 # 代理池健康检测探针（启动后台并发探测，不可用的提前吊销；2xx/3xx 视为可用）
