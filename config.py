@@ -75,6 +75,9 @@ DOWNLOAD_WORKERS = 4
 DOWNLOAD_WORKERS_MAX = 32
 PROBE_WORKERS = 6
 MAX_RESOURCES = 300
+# 每域名最小请求间隔（秒）：下载并发打爆单域名时的限速阀。
+# 0 关闭；0.05 ≈ 每域名最高 20 请求/秒（会话级，discover 与 download 共用）。
+PER_HOST_MIN_INTERVAL: float = float(os.environ.get("RESOURCES_PER_HOST_INTERVAL", "0.05"))
 
 # ---------------- 下载失败重试 ----------------
 # 单文件下载失败后的自动重试次数（1 次正常 + 重试次数，总共最多尝试 N+1 次）

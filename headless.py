@@ -33,6 +33,7 @@ class Task:
         self.progress: dict = {"total": 0, "ok": 0, "fail": 0}
         self.resources: list[dict] = []    # discover 任务的结果（to_dict）
         self.title: str = ""               # discover 首个页面的标题
+        self.cancel_event = threading.Event()  # 协作式取消：置位后任务尽快停止
 
     @property
     def done(self) -> bool:
@@ -60,13 +61,24 @@ class TaskRegistry:
             task.state = "running"
             task.started = time.time()
             fn(task)
-            task.state = "done"
+            if task.cancel_event.is_set():
+                task.state = "cancelled"
+            else:
+                task.state = "done"
         except Exception as exc:  # 任务边界：任何异常都转成失败状态，不炸线程
             task.state = "failed"
             task.error = f"{type(exc).__name__}: {exc}"
         finally:
             task.finished = time.time()
             self._sema.release()
+
+    def cancel(self, task_id: str) -> bool:
+        """协作式取消（discover 立即停队列，download 停止新分片）。返回是否命中。"""
+        task = self.get(task_id)
+        if task is None:
+            return False
+        task.cancel_event.set()
+        return True
 
     def get(self, task_id: str) -> Task | None:
         with self._lock:
@@ -97,9 +109,11 @@ def run_discover(task: Task) -> None:
     task.progress["total"] = len(urls)
     task.title = ""
     for url in urls:
+        if task.cancel_event.is_set():
+            break
         try:
             discoverer = Discoverer(render_mode=bool(task.data.get("render")),
-                                    stop_event=threading.Event())
+                                    stop_event=task.cancel_event)
             resources, title = discoverer.discover(url)
             task.title = task.title or (title or "")
             for r in resources:
@@ -131,7 +145,8 @@ def run_download(task: Task) -> None:
             task.progress["fail"] = done - task.progress["ok"]
 
     downloader = Downloader(outdir=outdir)
-    downloader.start(resources, progress_cb=on_progress)
+    downloader.start(resources, progress_cb=on_progress,
+                     cancel_event=task.cancel_event)
     task.progress["ok"] = downloader.stat.downloaded
     task.progress["fail"] = downloader.stat.failed
     task.progress["total"] = downloader.stat.total

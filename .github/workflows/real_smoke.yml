@@ -1,0 +1,47 @@
+name: real-smoke
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Prepare chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Real smoke
+        env:
+          SMOKE_DOUYIN_URL: https://www.douyin.com/search/%E7%8C%AB%E5%92%AA
+          SMOKE_KUAISHOU_URL: https://www.kuaishou.com/search/video?searchKey=%E7%8C%AB%E5%92%AA
+          SMOKE_BILI_URL: https://www.bilibili.com/video/BV1GJ411x7h7
+          SMOKE_XIAOHONGSHU_URL: ""
+        run: python scripts/real_smoke.py
+
+      - name: Open issue on adapter failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="实时冒烟失败（$(date -u +%Y-%m-%d)）"
+          OPEN=$(gh issue list --state open --search "实时冒烟失败 in:title" --json number --jq length 2>/dev/null || echo 0)
+          if [ "$OPEN" -ge 1 ]; then
+            echo "已有未关闭的冒烟 issue，跳过创建"
+          else
+            gh issue create --title "$TITLE" --body "定时真实冒烟检测到平台适配器提取异常：页面能加载但提取 0 资源。请检查 platform_adapters/ 的解析逻辑是否被平台接口签名或页面结构变更打破（查看 Actions real-smoke 工作流日志定位具体平台）。"
+          fi

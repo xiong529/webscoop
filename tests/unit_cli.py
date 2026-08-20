@@ -65,6 +65,17 @@ check("registry: 队列控制（第 3 个任务不立刻 running）",
 time.sleep(0.5)
 check("registry: 排队任务最终 done", t3.state == "done")
 
+# ---------- 取消 ----------
+t_cancel = reg.submit("discover", {}, lambda t: t.cancel_event.wait(10))
+time.sleep(0.1)
+check("registry: cancel 命中", reg.cancel(t_cancel.id) is True)
+for _ in range(50):
+    if t_cancel.done:
+        break
+    time.sleep(0.05)
+check("registry: 取消后状态 cancelled", t_cancel.state == "cancelled")
+check("registry: cancel 未命中返回 False", reg.cancel("nope") is False)
+
 
 # ---------- follow 子命令（写入临时文件） ----------
 _tmp = tempfile.mkdtemp(prefix="ws_cli_")

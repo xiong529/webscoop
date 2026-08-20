@@ -976,7 +976,8 @@ class Downloader:
         self.ok_urls: set[str] = set()
         self.fail_urls: dict[str, str] = {}
 
-    def start(self, resources: list[Resource], progress_cb=None):
+    def start(self, resources: list[Resource], progress_cb=None,
+              cancel_event: "threading.Event | None" = None):
         # 下载前的最后一道防线：过滤图标/极小文件，避免落到磁盘
         resources = [r for r in resources
                      if not is_icon_url(r.url) and not is_platform_noise_url(r.url)
@@ -987,6 +988,11 @@ class Downloader:
             futures = {pool.submit(self._download_one, r, done_idx): r
                        for done_idx, r in enumerate(resources)}
             for fut in as_completed(futures):
+                # 协作式取消：置位后不再吸收新结果，未启动线程 cancel，进行中的放行
+                if cancel_event is not None and cancel_event.is_set():
+                    for f in futures:
+                        f.cancel()
+                    break
                 r = futures[fut]
                 r_name, ok, reason = fut.result()
                 done += 1

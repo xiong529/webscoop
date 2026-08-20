@@ -3,6 +3,13 @@
 格式：平台差异说明见 scripts/changelog_gen.py（发版草稿自动生成入口）；
 本文件为按版本手校的汇总，发版时以生成器草稿为准微调。
 
+## 1.0.9（2026-08-20）可观测性批
+
+- 定时真实冒烟：GitHub Actions cron 每天对抖音/快手/B站真实页面跑「渲染→接口捕获→提取」链路，页面能加载但提取 0 资源自动开 issue（治"无声坏掉"）；传输层失败仅警告不误报
+- 适配器单测化：4 平台 fixture JSON 喂 extract()，无需网络/浏览器，CI 直接可跑（unit_adapters）
+- API 任务取消：POST /api/cancel 协作式取消（discover 立即停队列、download 停新分片）；任务状态新增 cancelled
+- 每域名限速：RESOURCES_PER_HOST_INTERVAL（默认 0.05s/域名/请求）软限流，下载并发不再无约束打爆单站点
+
 ## 1.0.8（2026-08-20）无头化批
 
 - CLI（headless）：`webscoop discover / download / follow add|list|remove|clear|run / serve / doctor / gui`，不依赖 tkinter，为 Docker/服务器铺路

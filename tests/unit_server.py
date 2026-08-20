@@ -37,6 +37,14 @@ class _FakeRegistry:
     def get(self, task_id):
         return self._tasks.get(task_id)
 
+    def cancel(self, task_id):
+        task = self._tasks.get(task_id)
+        if task is None:
+            return False
+        task.cancel_event.set()
+        task.state = "cancelled"
+        return True
+
     def describe(self, task_id):
         t = self._tasks.get(task_id)
         return None if t is None else {
@@ -110,6 +118,14 @@ check("download 缺 task_id: 400", code == 400)
 code, payload = req("POST", "/api/download", {"task_id": tid, "outdir": "o"})
 check("download 合法: 202 + 新 task_id",
       code == 202 and payload["task_id"].startswith("download-"))
+
+# ---------- 取消 ----------
+code, payload = req("POST", "/api/cancel", {"task_id": "missing"})
+check("cancel 无效 task_id: cancelled=false", code == 202 and payload["cancelled"] is False)
+code, payload = req("POST", "/api/cancel", {"task_id": tid})
+check("cancel 命中: cancelled=true", code == 202 and payload["cancelled"] is True)
+code, payload = req("POST", "/api/cancel", {})
+check("cancel 缺 task_id: 400", code == 400)
 
 # ---------- 列表 / 统计 ----------
 code, payload = req("GET", "/api/tasks")

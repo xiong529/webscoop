@@ -67,17 +67,27 @@ RESOURCES_API_TOKEN=my-token webscoop serve -p 8000
 ```bash
 POST /api/discover  {"urls": ["https://www.douyin.com/user/xxx"]}   → {"task_id": "discover-..."}
 POST /api/download  {"task_id": "discover-...", "outdir": "./out"}  → {"task_id": "download-..."}
+POST /api/cancel    {"task_id": "discover-..."}                     → {"cancelled": true}（协作式取消）
 GET  /api/tasks/{id}   → 任务进度与资源列表（discover 任务含 resources）
 GET  /api/tasks        → 全部任务快照        GET /api/stats → 累计统计
 GET  /api/health       → {"ok": true, "version": "1.0.8"}
 ```
 
 请求需带 `X-Api-Token` 头（或 `?token=`）；token 为空则本机免密。iOS 快捷指令 / crontab / 脚本均可调用。
+注意：下载并发打爆单域名时可设 `RESOURCES_PER_HOST_INTERVAL`（默认 0.05 秒/请求/域名）软限速。
 
 ### ⚙️ 主要设置项（环境变量可覆盖）
 
 下载目录 `RESOURCES_INFO_DIR`、代理 `RESOURCES_PROXY`、文件名模板 `RESOURCES_FILENAME_TEMPLATE`、
-重试 `RESOURCES_RETRY_TIMES`、代理池 `RESOURCES_PROXY_POOL`、并发 `RESOURCES_HLS_WORKERS` 等，详见 `config.py`。
+重试 `RESOURCES_RETRY_TIMES`、代理池 `RESOURCES_PROXY_POOL`、并发 `RESOURCES_HLS_WORKERS`、
+限速 `RESOURCES_PER_HOST_INTERVAL` 等，详见 `config.py`。
+
+## 健康守护
+
+`.github/workflows/real_smoke.yml` 每天 04:00 UTC 定时对真实平台页面跑
+「渲染 → 接口捕获 → 适配器提取」冒烟：页面能加载但提取 0 资源（签名接口/页面结构被改）
+会自动开 issue 提示排查；传输层失败仅警告不误报。平台 URL 通过工作流顶部
+`SMOKE_DOUYIN_URL` 等环境变量配置。
 
 ## 测试
 

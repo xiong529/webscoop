@@ -6,6 +6,7 @@
 端点（全部 JSON）：
     POST /api/discover  {"urls": [...], "render": bool}  → 202 {"task_id": ...}
     POST /api/download  {"task_id": <discover任务>, "outdir": ""} → 202
+    POST /api/cancel    {"task_id": ...}                        → 202 {"cancelled": bool}
     GET  /api/tasks                → 全部任务快照
     GET  /api/tasks/{id}           → 单任务详情（discover 任务含资源列表）
     GET  /api/stats                → 累计统计（任务回归 + stats.json）
@@ -121,6 +122,12 @@ class _Handler(BaseHTTPRequestHandler):
                  "registry": self.registry},
                 run_download)
             return self._send(202, {"task_id": task.id})
+        if path == "/api/cancel":
+            body = self._body()
+            task_id = body.get("task_id")
+            if not isinstance(task_id, str) or not task_id:
+                return self._send(400, {"error": "task_id 不能为空"})
+            return self._send(202, {"cancelled": self.registry.cancel(task_id)})
         return self._send(404, {"error": f"unknown path: {path}"})
 
     def log_message(self, fmt, *args):  # 静音：stdout 留给 CLI

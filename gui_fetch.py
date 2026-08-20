@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import os
 import random
+import threading
+import time
+from urllib.parse import urlparse
 
 import config
 
@@ -32,6 +35,31 @@ from resources_reptile.utils.user_agents import random_user_agent
 
 # 403/网络异常时的指纹回退序列（借鉴 MediaCrawler 的优雅降级）
 _IMPERSONATE_FALLBACKS = ("chrome", "firefox", "safari", "chrome120", "edge")
+
+# ---------------- 每域名限速（下载并发打爆单域名时的软限流） ----------------
+# 线程安全简单窗口：同一 host 两次请求间隔不小于 config.PER_HOST_MIN_INTERVAL。
+_throttle_lock = threading.Lock()
+_throttle_last: dict[str, float] = {}
+
+
+def throttle_host(url: str) -> None:
+    """按目标域名限速。间隔 <=0 关闭；同一 host 两次请求的发起时刻间隔不小于阈值。"""
+    interval = config.PER_HOST_MIN_INTERVAL
+    if interval <= 0:
+        return
+    host = (urlparse(url).netloc or "").lower()
+    if not host:
+        return
+    now = time.monotonic()
+    wait = 0.0
+    with _throttle_lock:
+        prev = _throttle_last.get(host, 0.0)
+        wait = interval - (now - prev)
+        if wait <= 0:
+            _throttle_last[host] = now
+    if wait > 0:
+        time.sleep(wait)
+        _throttle_last[host] = time.monotonic()
 
 
 def _scrapling_get(url: str, headers: dict | None, timeout: int,
@@ -257,6 +285,7 @@ class FetchSession:
 
     def get(self, url: str, headers: dict | None = None, timeout: int | None = None,
             stream: bool = False, proxy: str | None = None):
+        throttle_host(url)
         timeout = timeout or config.REQUEST_TIMEOUT
         try:
             resp, using = self._request_with_fallback("get", url, headers, timeout, stream,
@@ -287,6 +316,7 @@ class FetchSession:
 
     def head(self, url: str, headers: dict | None = None, timeout: int | None = None,
              allow_redirects: bool = True, proxy: str | None = None):
+        throttle_host(url)
         timeout = timeout or config.REQUEST_TIMEOUT
         resp, using = self._request_with_fallback("head", url, headers, timeout, False,
                                                   proxy_override=proxy)
@@ -299,6 +329,7 @@ class FetchSession:
         额外返回 (chunk, content_length)：content_length 为响应头的 Content-Length，
         供调用方校验完整性（流提前中断时能发现文件损坏）。
         """
+        throttle_host(url)
         resp, using = self._request_with_fallback("get", url, headers, timeout, stream=True,
                                                   proxy_override=proxy)
         if getattr(resp, "status_code", 0) >= 400:
