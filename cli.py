@@ -77,6 +77,7 @@ class FollowCli:
     def count() -> int:
         from follow_list import items
         return len(items())
+    @staticmethod
     def list(args) -> int:
         from follow_list import items
         rows = items()

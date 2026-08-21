@@ -89,7 +89,7 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send(200, {
                 "tasks": len(snap),
                 "by_state": {s: sum(1 for t in snap if t["state"] == s)
-                             for s in ("queued", "running", "done", "failed")},
+                             for s in ("queued", "running", "done", "failed", "cancelled")},
                 "downloads_ok": sum(t["progress"].get("ok", 0) for t in snap),
                 "downloads_fail": sum(t["progress"].get("fail", 0) for t in snap),
                 "cumulative": _read_stats_json(),

@@ -50,16 +50,16 @@ def throttle_host(url: str) -> None:
     host = (urlparse(url).netloc or "").lower()
     if not host:
         return
-    now = time.monotonic()
-    wait = 0.0
     with _throttle_lock:
+        now = time.monotonic()
         prev = _throttle_last.get(host, 0.0)
         wait = interval - (now - prev)
         if wait <= 0:
             _throttle_last[host] = now
+        else:
+            _throttle_last[host] = now + wait
     if wait > 0:
         time.sleep(wait)
-        _throttle_last[host] = time.monotonic()
 
 
 def _scrapling_get(url: str, headers: dict | None, timeout: int,
